@@ -337,35 +337,39 @@ function TargetCard({
   targetId,
   periodId,
   editable,
+  isMaster,
   attainment,
   minTrigger,
+  goalMeta,
+  goalTc,
+  note,
   values,
 }: {
   targetId: string | null;
   periodId: string;
   editable: boolean;
+  isMaster: boolean;
   attainment: number | null;
   minTrigger: number;
+  goalMeta: number | null;
+  goalTc: number | null;
+  note: string | null;
   values: Record<string, number | null>;
 }) {
   const qc = useQueryClient();
   const [form, setForm] = useState(values);
+  const [noteText, setNoteText] = useState(note ?? "");
   useEffect(() => setForm(values), [targetId, JSON.stringify(values)]);
+  useEffect(() => setNoteText(note ?? ""), [targetId, note]);
 
   const save = useMutation({
     mutationFn: async () => {
-      const base = form['base_history'];
-      const growth = form['growth_pct'];
-      const calculated =
-        base !== null && base !== undefined && growth !== null && growth !== undefined
-          ? Number(base) * (1 + Number(growth) / 100)
-          : form['target_calculated'];
       const payload = {
-        base_history: form['base_history'] ?? null,
-        growth_pct: form['growth_pct'] ?? null,
-        target_calculated: calculated ?? null,
-        target_adjusted: form['target_adjusted'] ?? null,
+        target_calculated: goalMeta,
+        target_adjusted: isMaster ? (form['target_adjusted'] ?? null) : (values['target_adjusted'] ?? null),
         revenue_actual: form['revenue_actual'] ?? null,
+        tc_actual: form['tc_actual'] ?? null,
+        manager_note: noteText.trim() === "" ? null : noteText.trim(),
       };
       const { error } = targetId
         ? await supabase.from("store_targets").update(payload).eq("id", targetId)
@@ -373,11 +377,16 @@ function TargetCard({
       if (error) throw new Error(error.message);
     },
     onSuccess: () => {
-      toast.success("Meta e faturamento atualizados.");
+      toast.success("Realizado e observação atualizados.");
       qc.invalidateQueries();
     },
-    onError: (e: Error) => toast.error("Erro ao salvar meta", { description: e.message }),
+    onError: (e: Error) => toast.error("Erro ao salvar", { description: e.message }),
   });
+
+  const tcPct =
+    goalTc && goalTc > 0 && form['tc_actual'] !== null && form['tc_actual'] !== undefined
+      ? (Number(form['tc_actual']) / goalTc) * 100
+      : null;
 
   const field = (key: string, label: string, hint?: string) => (
     <div className="space-y-1.5">
@@ -399,16 +408,44 @@ function TargetCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Meta de faturamento</CardTitle>
+        <CardTitle className="text-base">Meta da loja e realizado</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          {field("base_history", "Base histórica (R$)")}
-          {field("growth_pct", "Crescimento (%)")}
-          {field("target_calculated", "Meta calculada (R$)", "Base × (1 + crescimento)")}
-          {field("target_adjusted", "Meta ajustada (R$)", "Prevalece sobre a calculada")}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="space-y-1.5">
+            <Label>Meta de faturamento</Label>
+            <p className="text-lg font-semibold">{goalMeta === null ? "—" : brl(goalMeta)}</p>
+            <p className="text-xs text-muted-foreground">Definida pelo administrador</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Meta de TC</Label>
+            <p className="text-lg font-semibold">
+              {goalTc === null ? "—" : Number(goalTc).toLocaleString("pt-BR")}
+            </p>
+            <p className="text-xs text-muted-foreground">Total de clientes atendidos</p>
+          </div>
           {field("revenue_actual", "Faturamento realizado (R$)")}
+          {field("tc_actual", "TC realizado")}
         </div>
+
+        {isMaster && (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {field("target_adjusted", "Meta ajustada (R$)", "Somente o Master — prevalece sobre a meta gerada")}
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <Label htmlFor="manager_note">Observações da loja</Label>
+          <Textarea
+            id="manager_note"
+            rows={3}
+            disabled={!editable}
+            placeholder="Registre esclarecimentos sobre o período (obras, feriados, falta de equipe...)"
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+          />
+        </div>
+
         <div className="flex flex-wrap items-center gap-3">
           <span
             className={cn(
@@ -416,11 +453,14 @@ function TargetCard({
               attainment !== null && attainment < minTrigger ? "text-destructive" : "text-success",
             )}
           >
-            Atingimento: {pct(attainment)} (gatilho {minTrigger}%)
+            Atingimento do faturamento: {pct(attainment)} (gatilho {minTrigger}%)
+          </span>
+          <span className="text-sm text-muted-foreground">
+            TC: {tcPct === null ? "—" : `${tcPct.toFixed(1)}%`} da meta
           </span>
           {editable && (
             <Button size="sm" className="ml-auto" onClick={() => save.mutate()} disabled={save.isPending}>
-              Salvar meta
+              Salvar
             </Button>
           )}
         </div>
@@ -428,6 +468,7 @@ function TargetCard({
     </Card>
   );
 }
+
 
 type CriterionRow = {
   id: string;
