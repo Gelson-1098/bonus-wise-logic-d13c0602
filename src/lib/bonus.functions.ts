@@ -65,10 +65,19 @@ export const saveEntryCalculation = createServerFn({ method: "POST" })
       .eq("period_id", period.id)
       .maybeSingle();
 
+    const { data: goal } = await supabase
+      .from("store_goals")
+      .select("meta_faturamento")
+      .eq("store_id", entry.store_id)
+      .eq("year", period.year)
+      .eq("month", period.month)
+      .maybeSingle();
+
     const criteria = (criteriaRows ?? []) as unknown as EngineCriterion[];
     const results = data.results as EngineResult[];
     const base = (entry.positions as unknown as { base_value: number | null } | null)?.base_value ?? null;
-    const metaValue = target?.target_adjusted ?? target?.target_calculated ?? null;
+    const metaValue = target?.target_adjusted ?? goal?.meta_faturamento ?? target?.target_calculated ?? null;
+
 
     const output = calculateBonus({
       baseValue: base === null ? null : Number(base),
@@ -274,8 +283,20 @@ export const openPeriod = createServerFn({ method: "POST" })
         .single();
       if (error) throw new Error(error.message);
       periodId = created.id;
-      await supabase.from("store_targets").insert({ period_id: periodId, updated_by: userId });
+      const { data: goal } = await supabase
+        .from("store_goals")
+        .select("meta_faturamento")
+        .eq("store_id", data.store_id)
+        .eq("year", data.year)
+        .eq("month", data.month)
+        .maybeSingle();
+      await supabase.from("store_targets").insert({
+        period_id: periodId,
+        updated_by: userId,
+        target_calculated: goal?.meta_faturamento ?? null,
+      });
     }
+
 
     const { data: employees } = await supabase
       .from("employees")
