@@ -243,16 +243,19 @@ function LancamentoPage() {
             targetId={target?.id ?? null}
             periodId={periodId}
             editable={editable}
+            isMaster={access?.isMaster ?? false}
             attainment={attainment}
             minTrigger={version?.min_trigger_pct ?? 90}
+            goalMeta={goalMeta === null || goalMeta === undefined ? null : Number(goalMeta)}
+            goalTc={goalQuery.data?.meta_tc === undefined ? null : Number(goalQuery.data?.meta_tc)}
+            note={target?.manager_note ?? null}
             values={{
-              base_history: target?.base_history ?? null,
-              growth_pct: target?.growth_pct ?? null,
-              target_calculated: target?.target_calculated ?? null,
               target_adjusted: target?.target_adjusted ?? null,
               revenue_actual: target?.revenue_actual ?? null,
+              tc_actual: target?.tc_actual ?? null,
             }}
           />
+
 
           <Card>
             <CardHeader className="flex-row items-center justify-between">
