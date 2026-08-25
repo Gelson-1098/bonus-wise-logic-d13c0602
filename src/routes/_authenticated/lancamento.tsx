@@ -87,7 +87,7 @@ function LancamentoPage() {
       const { data, error } = await supabase
         .from("bonus_periods")
         .select(
-          "id,status,month,year,review_note,version_id,bonus_rule_versions(name,min_trigger_pct,alert_pct,target_pct),store_targets(id,base_history,growth_pct,target_calculated,target_adjusted,revenue_actual,notes)",
+          "id,status,month,year,review_note,version_id,bonus_rule_versions(name,min_trigger_pct,alert_pct,target_pct),store_targets(id,base_history,growth_pct,target_calculated,target_adjusted,revenue_actual,tc_actual,manager_note,notes)",
         )
         .eq("store_id", storeId)
         .eq("month", period.month)
