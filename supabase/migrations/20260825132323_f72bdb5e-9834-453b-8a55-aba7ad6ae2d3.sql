@@ -1,0 +1,1 @@
+ALTER TABLE public.store_targets ADD COLUMN IF NOT EXISTS tc_actual numeric;

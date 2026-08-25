@@ -900,6 +900,7 @@ export type Database = {
           revenue_actual: number | null
           target_adjusted: number | null
           target_calculated: number | null
+          tc_actual: number | null
           updated_at: string
           updated_by: string | null
         }
@@ -914,6 +915,7 @@ export type Database = {
           revenue_actual?: number | null
           target_adjusted?: number | null
           target_calculated?: number | null
+          tc_actual?: number | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -928,6 +930,7 @@ export type Database = {
           revenue_actual?: number | null
           target_adjusted?: number | null
           target_calculated?: number | null
+          tc_actual?: number | null
           updated_at?: string
           updated_by?: string | null
         }
