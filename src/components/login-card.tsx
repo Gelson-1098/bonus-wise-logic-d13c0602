@@ -24,7 +24,7 @@ export function LoginCard() {
       toast.error("Não foi possível entrar", { description: error.message });
       return;
     }
-    navigate({ to: "/painel" });
+    navigate({ to: "/dashboard" });
   }
 
   async function signUp() {
@@ -43,7 +43,7 @@ export function LoginCard() {
       return;
     }
     toast.success("Conta criada", { description: "Verifique seu e-mail se a confirmação estiver ativa." });
-    navigate({ to: "/painel" });
+    navigate({ to: "/dashboard" });
   }
 
   async function google() {
@@ -55,7 +55,7 @@ export function LoginCard() {
       return;
     }
     if (result.redirected) return;
-    navigate({ to: "/painel" });
+    navigate({ to: "/dashboard" });
   }
 
   return (

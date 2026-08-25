@@ -30,7 +30,7 @@ function Home() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (session) navigate({ to: "/painel" });
+    if (session) navigate({ to: "/dashboard" });
   }, [session, navigate]);
 
   return (
