@@ -788,7 +788,7 @@ function ImportWizard() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={() => doImport.mutate(true)}>Substituir</AlertDialogAction>
           </AlertDialogFooter>
-        </AlertDialogFooter>
+
         </AlertDialogContent>
       </AlertDialog>
     </div>
