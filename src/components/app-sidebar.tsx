@@ -70,7 +70,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-sidebar-border">
       <SidebarHeader className="gap-0 px-4 py-4">
         <p className="truncate text-base font-semibold tracking-tight text-sidebar-accent-foreground">
-          DEX <span className="text-sidebar-primary">INVEST</span>
+          VÉR<span className="text-sidebar-primary">TICE</span>
         </p>
         {!collapsed && (
           <p className="mt-0.5 truncate text-xs text-sidebar-foreground/60">Plataforma corporativa</p>
