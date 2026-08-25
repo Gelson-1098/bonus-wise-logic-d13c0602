@@ -316,9 +316,14 @@ export async function setManagedUserActive(userId: string, active: boolean, acto
 }
 
 export async function saveDefaultPassword(password: string, actor: ActorInfo) {
-  // valida a senha contra as regras reais do serviço de autenticação usando o próprio Master
-  const probe = await supabaseAdmin.auth.admin.updateUserById(actor.userId, { password });
-  if (probe.error) throw new Error(friendlyAuthError(probe.error.message));
+  if (password.trim().length < 8 || /^\s|\s$/.test(password)) {
+    throw new Error("A senha escolhida não atende aos requisitos mínimos de segurança.");
+  }
   await writeDefaultPassword(password, actor);
-  await audit(actor, "DEFAULT_PASSWORD_UPDATED", actor.userId, "Senha padrão da plataforma atualizada.");
+  await audit(
+    actor,
+    "DEFAULT_PASSWORD_UPDATED",
+    actor.userId,
+    "Senha padrão da plataforma atualizada.",
+  );
 }
