@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, Copy, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, Plus, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/app-shell";
 import { useAccess } from "@/hooks/use-auth";
@@ -217,6 +217,52 @@ function RegrasPage() {
     () => (criteria.data ?? []).filter((c) => !c.is_eliminatory).reduce((s, c) => s + Number(c.value_brl ?? 0), 0),
     [criteria.data],
   );
+  const missingTarget = useMemo(
+    () =>
+      (criteria.data ?? []).filter(
+        (c) => c.active && !c.target_text?.trim() && c.target_value === null,
+      ),
+    [criteria.data],
+  );
+  const rows = criteria.data ?? [];
+  const baseValue = position?.base_value === null || position?.base_value === undefined ? null : Number(position.base_value);
+  const checks = useMemo(() => {
+    if (rows.length === 0) return [];
+    return [
+      {
+        ok: Math.abs(weightSum - 100) <= 0.01,
+        label: "Soma dos pesos = 100%",
+        detail: `Atual: ${weightSum.toFixed(2)}%`,
+      },
+      {
+        ok: baseValue !== null && Math.abs(valueSum - baseValue) <= 0.01,
+        label: "Soma dos valores = bônus máximo do cargo",
+        detail:
+          baseValue === null
+            ? "Cargo sem valor base configurado"
+            : `Atual: ${brl(valueSum)} · máximo: ${brl(baseValue)}`,
+      },
+      {
+        ok: missingTarget.length === 0,
+        label: "Todo indicador com regra de atingimento própria",
+        detail:
+          missingTarget.length === 0
+            ? "Todos os indicadores ativos possuem meta definida"
+            : `Sem meta: ${missingTarget.map((c) => c.name).join(", ")}`,
+      },
+      {
+        ok: baseValue === null || valueSum <= baseValue + 0.01,
+        label: "Teto por cargo respeitado no cálculo",
+        detail:
+          baseValue === null
+            ? "Cargo sem valor base configurado"
+            : valueSum <= baseValue + 0.01
+              ? `O pagamento nunca excede ${brl(baseValue)}`
+              : `Os valores somam ${brl(valueSum)}, acima do teto ${brl(baseValue)} — o cálculo limitará ao teto`,
+      },
+    ];
+  }, [rows.length, weightSum, valueSum, baseValue, missingTarget]);
+
 
   return (
     <AppShell
@@ -327,18 +373,34 @@ function RegrasPage() {
           </div>
         </CardHeader>
         <CardContent className="px-0">
-          {Math.abs(weightSum - 100) > 0.5 && (criteria.data ?? []).length > 0 && (
-            <div className="mx-6 mb-3">
-              <Alert>
-                <AlertTriangle className="size-4" />
-                <AlertTitle>Pesos não totalizam 100%</AlertTitle>
-                <AlertDescription>
-                  Este cargo soma {weightSum.toFixed(2)}%. O cálculo usa os valores em R$ de cada indicador — ajuste
-                  se a intenção era distribuir 100%.
-                </AlertDescription>
-              </Alert>
+          {checks.length > 0 && (
+            <div className="mx-6 mb-4 rounded-lg border bg-muted/30 p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Conferência do cargo {position?.name ?? ""}
+              </p>
+              <ul className="space-y-2">
+                {checks.map((c) => (
+                  <li key={c.label} className="flex items-start gap-2 text-sm">
+                    {c.ok ? (
+                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                    ) : (
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                    )}
+                    <span>
+                      <span className={c.ok ? "" : "font-medium text-destructive"}>{c.label}</span>
+                      <span className="block text-xs text-muted-foreground">{c.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {checks.some((c) => !c.ok) && (
+                <p className="mt-3 text-xs text-destructive">
+                  Ajuste os pontos marcados antes de publicar esta versão.
+                </p>
+              )}
             </div>
           )}
+
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
