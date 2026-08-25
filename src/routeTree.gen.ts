@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
 import { Route as AuthenticatedCadastrosRouteImport } from './routes/_authenticated/cadastros'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -23,6 +24,8 @@ import { Route as AuthenticatedRegrasRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedAdminSplatRouteImport } from './routes/_authenticated/admin/$'
 import { Route as AuthenticatedAdminAuditoriaRouteImport } from './routes/_authenticated/admin/auditoria'
 import { Route as AuthenticatedAdminCadastrosRouteImport } from './routes/_authenticated/admin/cadastros'
+import { Route as AuthenticatedAdminConfiguracoesRouteImport } from './routes/_authenticated/admin/configuracoes'
+import { Route as AuthenticatedAdminUsuariosRouteImport } from './routes/_authenticated/admin/usuarios'
 import { Route as AuthenticatedAuditoriasSplatRouteImport } from './routes/_authenticated/auditorias/$'
 import { Route as AuthenticatedAvaliacoesSplatRouteImport } from './routes/_authenticated/avaliacoes/$'
 import { Route as AuthenticatedBeneficiosSplatRouteImport } from './routes/_authenticated/beneficios/$'
@@ -49,6 +52,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAuditoriaRoute = AuthenticatedAuditoriaRouteImport.update({
@@ -106,6 +114,18 @@ const AuthenticatedAdminCadastrosRoute =
   AuthenticatedAdminCadastrosRouteImport.update({
     id: '/admin/cadastros',
     path: '/admin/cadastros',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminConfiguracoesRoute =
+  AuthenticatedAdminConfiguracoesRouteImport.update({
+    id: '/admin/configuracoes',
+    path: '/admin/configuracoes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminUsuariosRoute =
+  AuthenticatedAdminUsuariosRouteImport.update({
+    id: '/admin/usuarios',
+    path: '/admin/usuarios',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAuditoriasSplatRoute =
@@ -189,6 +209,7 @@ const AuthenticatedRemuneracaoPlrSplatRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/cadastros': typeof AuthenticatedCadastrosRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -200,6 +221,8 @@ export interface FileRoutesByFullPath {
   '/admin/$': typeof AuthenticatedAdminSplatRoute
   '/admin/auditoria': typeof AuthenticatedAdminAuditoriaRoute
   '/admin/cadastros': typeof AuthenticatedAdminCadastrosRoute
+  '/admin/configuracoes': typeof AuthenticatedAdminConfiguracoesRoute
+  '/admin/usuarios': typeof AuthenticatedAdminUsuariosRoute
   '/auditorias/$': typeof AuthenticatedAuditoriasSplatRoute
   '/avaliacoes/$': typeof AuthenticatedAvaliacoesSplatRoute
   '/beneficios/$': typeof AuthenticatedBeneficiosSplatRoute
@@ -217,6 +240,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/cadastros': typeof AuthenticatedCadastrosRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -228,6 +252,8 @@ export interface FileRoutesByTo {
   '/admin/$': typeof AuthenticatedAdminSplatRoute
   '/admin/auditoria': typeof AuthenticatedAdminAuditoriaRoute
   '/admin/cadastros': typeof AuthenticatedAdminCadastrosRoute
+  '/admin/configuracoes': typeof AuthenticatedAdminConfiguracoesRoute
+  '/admin/usuarios': typeof AuthenticatedAdminUsuariosRoute
   '/auditorias/$': typeof AuthenticatedAuditoriasSplatRoute
   '/avaliacoes/$': typeof AuthenticatedAvaliacoesSplatRoute
   '/beneficios/$': typeof AuthenticatedBeneficiosSplatRoute
@@ -247,6 +273,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
   '/_authenticated/cadastros': typeof AuthenticatedCadastrosRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -258,6 +285,8 @@ export interface FileRoutesById {
   '/_authenticated/admin/$': typeof AuthenticatedAdminSplatRoute
   '/_authenticated/admin/auditoria': typeof AuthenticatedAdminAuditoriaRoute
   '/_authenticated/admin/cadastros': typeof AuthenticatedAdminCadastrosRoute
+  '/_authenticated/admin/configuracoes': typeof AuthenticatedAdminConfiguracoesRoute
+  '/_authenticated/admin/usuarios': typeof AuthenticatedAdminUsuariosRoute
   '/_authenticated/auditorias/$': typeof AuthenticatedAuditoriasSplatRoute
   '/_authenticated/avaliacoes/$': typeof AuthenticatedAvaliacoesSplatRoute
   '/_authenticated/beneficios/$': typeof AuthenticatedBeneficiosSplatRoute
@@ -277,6 +306,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/reset-password'
     | '/auditoria'
     | '/cadastros'
     | '/dashboard'
@@ -288,6 +318,8 @@ export interface FileRouteTypes {
     | '/admin/$'
     | '/admin/auditoria'
     | '/admin/cadastros'
+    | '/admin/configuracoes'
+    | '/admin/usuarios'
     | '/auditorias/$'
     | '/avaliacoes/$'
     | '/beneficios/$'
@@ -305,6 +337,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/reset-password'
     | '/auditoria'
     | '/cadastros'
     | '/dashboard'
@@ -316,6 +349,8 @@ export interface FileRouteTypes {
     | '/admin/$'
     | '/admin/auditoria'
     | '/admin/cadastros'
+    | '/admin/configuracoes'
+    | '/admin/usuarios'
     | '/auditorias/$'
     | '/avaliacoes/$'
     | '/beneficios/$'
@@ -334,6 +369,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/reset-password'
     | '/_authenticated/auditoria'
     | '/_authenticated/cadastros'
     | '/_authenticated/dashboard'
@@ -345,6 +381,8 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/$'
     | '/_authenticated/admin/auditoria'
     | '/_authenticated/admin/cadastros'
+    | '/_authenticated/admin/configuracoes'
+    | '/_authenticated/admin/usuarios'
     | '/_authenticated/auditorias/$'
     | '/_authenticated/avaliacoes/$'
     | '/_authenticated/beneficios/$'
@@ -364,6 +402,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -387,6 +426,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/auditoria': {
@@ -464,6 +510,20 @@ declare module '@tanstack/react-router' {
       path: '/admin/cadastros'
       fullPath: '/admin/cadastros'
       preLoaderRoute: typeof AuthenticatedAdminCadastrosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/configuracoes': {
+      id: '/_authenticated/admin/configuracoes'
+      path: '/admin/configuracoes'
+      fullPath: '/admin/configuracoes'
+      preLoaderRoute: typeof AuthenticatedAdminConfiguracoesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/usuarios': {
+      id: '/_authenticated/admin/usuarios'
+      path: '/admin/usuarios'
+      fullPath: '/admin/usuarios'
+      preLoaderRoute: typeof AuthenticatedAdminUsuariosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/auditorias/$': {
@@ -572,6 +632,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminSplatRoute: typeof AuthenticatedAdminSplatRoute
   AuthenticatedAdminAuditoriaRoute: typeof AuthenticatedAdminAuditoriaRoute
   AuthenticatedAdminCadastrosRoute: typeof AuthenticatedAdminCadastrosRoute
+  AuthenticatedAdminConfiguracoesRoute: typeof AuthenticatedAdminConfiguracoesRoute
+  AuthenticatedAdminUsuariosRoute: typeof AuthenticatedAdminUsuariosRoute
   AuthenticatedAuditoriasSplatRoute: typeof AuthenticatedAuditoriasSplatRoute
   AuthenticatedAvaliacoesSplatRoute: typeof AuthenticatedAvaliacoesSplatRoute
   AuthenticatedBeneficiosSplatRoute: typeof AuthenticatedBeneficiosSplatRoute
@@ -599,6 +661,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminSplatRoute: AuthenticatedAdminSplatRoute,
   AuthenticatedAdminAuditoriaRoute: AuthenticatedAdminAuditoriaRoute,
   AuthenticatedAdminCadastrosRoute: AuthenticatedAdminCadastrosRoute,
+  AuthenticatedAdminConfiguracoesRoute: AuthenticatedAdminConfiguracoesRoute,
+  AuthenticatedAdminUsuariosRoute: AuthenticatedAdminUsuariosRoute,
   AuthenticatedAuditoriasSplatRoute: AuthenticatedAuditoriasSplatRoute,
   AuthenticatedAvaliacoesSplatRoute: AuthenticatedAvaliacoesSplatRoute,
   AuthenticatedBeneficiosSplatRoute: AuthenticatedBeneficiosSplatRoute,
@@ -626,6 +690,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
