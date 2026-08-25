@@ -14,7 +14,7 @@ export const createUserSchema = z
     full_name: z.string().trim().min(3, "Informe o nome completo.").max(120),
     email: z.string().trim().toLowerCase().email("E-mail inválido.").max(255),
     role: z.enum(ROLES),
-    store_ids: z.array(z.string().uuid()).default([]),
+    store_ids: z.array(z.string().uuid()),
   })
   .refine((v) => v.role === "master" || v.store_ids.length > 0, {
     message: "Selecione ao menos uma loja.",

@@ -24,6 +24,7 @@ import { Route as AuthenticatedRegrasRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedAdminSplatRouteImport } from './routes/_authenticated/admin/$'
 import { Route as AuthenticatedAdminAuditoriaRouteImport } from './routes/_authenticated/admin/auditoria'
 import { Route as AuthenticatedAdminCadastrosRouteImport } from './routes/_authenticated/admin/cadastros'
+import { Route as AuthenticatedAdminUsuariosRouteImport } from './routes/_authenticated/admin/usuarios'
 import { Route as AuthenticatedAuditoriasSplatRouteImport } from './routes/_authenticated/auditorias/$'
 import { Route as AuthenticatedAvaliacoesSplatRouteImport } from './routes/_authenticated/avaliacoes/$'
 import { Route as AuthenticatedBeneficiosSplatRouteImport } from './routes/_authenticated/beneficios/$'
@@ -112,6 +113,12 @@ const AuthenticatedAdminCadastrosRoute =
   AuthenticatedAdminCadastrosRouteImport.update({
     id: '/admin/cadastros',
     path: '/admin/cadastros',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminUsuariosRoute =
+  AuthenticatedAdminUsuariosRouteImport.update({
+    id: '/admin/usuarios',
+    path: '/admin/usuarios',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAuditoriasSplatRoute =
@@ -207,6 +214,7 @@ export interface FileRoutesByFullPath {
   '/admin/$': typeof AuthenticatedAdminSplatRoute
   '/admin/auditoria': typeof AuthenticatedAdminAuditoriaRoute
   '/admin/cadastros': typeof AuthenticatedAdminCadastrosRoute
+  '/admin/usuarios': typeof AuthenticatedAdminUsuariosRoute
   '/auditorias/$': typeof AuthenticatedAuditoriasSplatRoute
   '/avaliacoes/$': typeof AuthenticatedAvaliacoesSplatRoute
   '/beneficios/$': typeof AuthenticatedBeneficiosSplatRoute
@@ -236,6 +244,7 @@ export interface FileRoutesByTo {
   '/admin/$': typeof AuthenticatedAdminSplatRoute
   '/admin/auditoria': typeof AuthenticatedAdminAuditoriaRoute
   '/admin/cadastros': typeof AuthenticatedAdminCadastrosRoute
+  '/admin/usuarios': typeof AuthenticatedAdminUsuariosRoute
   '/auditorias/$': typeof AuthenticatedAuditoriasSplatRoute
   '/avaliacoes/$': typeof AuthenticatedAvaliacoesSplatRoute
   '/beneficios/$': typeof AuthenticatedBeneficiosSplatRoute
@@ -267,6 +276,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/$': typeof AuthenticatedAdminSplatRoute
   '/_authenticated/admin/auditoria': typeof AuthenticatedAdminAuditoriaRoute
   '/_authenticated/admin/cadastros': typeof AuthenticatedAdminCadastrosRoute
+  '/_authenticated/admin/usuarios': typeof AuthenticatedAdminUsuariosRoute
   '/_authenticated/auditorias/$': typeof AuthenticatedAuditoriasSplatRoute
   '/_authenticated/avaliacoes/$': typeof AuthenticatedAvaliacoesSplatRoute
   '/_authenticated/beneficios/$': typeof AuthenticatedBeneficiosSplatRoute
@@ -298,6 +308,7 @@ export interface FileRouteTypes {
     | '/admin/$'
     | '/admin/auditoria'
     | '/admin/cadastros'
+    | '/admin/usuarios'
     | '/auditorias/$'
     | '/avaliacoes/$'
     | '/beneficios/$'
@@ -327,6 +338,7 @@ export interface FileRouteTypes {
     | '/admin/$'
     | '/admin/auditoria'
     | '/admin/cadastros'
+    | '/admin/usuarios'
     | '/auditorias/$'
     | '/avaliacoes/$'
     | '/beneficios/$'
@@ -357,6 +369,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/$'
     | '/_authenticated/admin/auditoria'
     | '/_authenticated/admin/cadastros'
+    | '/_authenticated/admin/usuarios'
     | '/_authenticated/auditorias/$'
     | '/_authenticated/avaliacoes/$'
     | '/_authenticated/beneficios/$'
@@ -486,6 +499,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminCadastrosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/usuarios': {
+      id: '/_authenticated/admin/usuarios'
+      path: '/admin/usuarios'
+      fullPath: '/admin/usuarios'
+      preLoaderRoute: typeof AuthenticatedAdminUsuariosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/auditorias/$': {
       id: '/_authenticated/auditorias/$'
       path: '/auditorias/$'
@@ -592,6 +612,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminSplatRoute: typeof AuthenticatedAdminSplatRoute
   AuthenticatedAdminAuditoriaRoute: typeof AuthenticatedAdminAuditoriaRoute
   AuthenticatedAdminCadastrosRoute: typeof AuthenticatedAdminCadastrosRoute
+  AuthenticatedAdminUsuariosRoute: typeof AuthenticatedAdminUsuariosRoute
   AuthenticatedAuditoriasSplatRoute: typeof AuthenticatedAuditoriasSplatRoute
   AuthenticatedAvaliacoesSplatRoute: typeof AuthenticatedAvaliacoesSplatRoute
   AuthenticatedBeneficiosSplatRoute: typeof AuthenticatedBeneficiosSplatRoute
@@ -619,6 +640,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminSplatRoute: AuthenticatedAdminSplatRoute,
   AuthenticatedAdminAuditoriaRoute: AuthenticatedAdminAuditoriaRoute,
   AuthenticatedAdminCadastrosRoute: AuthenticatedAdminCadastrosRoute,
+  AuthenticatedAdminUsuariosRoute: AuthenticatedAdminUsuariosRoute,
   AuthenticatedAuditoriasSplatRoute: AuthenticatedAuditoriasSplatRoute,
   AuthenticatedAvaliacoesSplatRoute: AuthenticatedAvaliacoesSplatRoute,
   AuthenticatedBeneficiosSplatRoute: AuthenticatedBeneficiosSplatRoute,
