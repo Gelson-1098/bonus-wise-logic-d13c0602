@@ -117,6 +117,22 @@ function LancamentoPage() {
     },
   });
 
+  const goalQuery = useQuery({
+    queryKey: ["goal", storeId, period.month, period.year],
+    enabled: !!storeId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("store_goals")
+        .select("meta_faturamento,meta_tc,growth_fat_pct,growth_tc_pct,base_year")
+        .eq("store_id", storeId)
+        .eq("year", period.year)
+        .eq("month", period.month)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return data;
+    },
+  });
+
   const target = (periodQuery.data?.store_targets ?? null) as {
     id: string;
     base_history: number | null;
@@ -124,15 +140,19 @@ function LancamentoPage() {
     target_calculated: number | null;
     target_adjusted: number | null;
     revenue_actual: number | null;
+    tc_actual: number | null;
+    manager_note: string | null;
   } | null;
   const version = periodQuery.data?.bonus_rule_versions as
     | { name: string; min_trigger_pct: number; alert_pct: number; target_pct: number }
     | null;
-  const metaValue = target?.target_adjusted ?? target?.target_calculated ?? null;
+  const goalMeta = goalQuery.data?.meta_faturamento ?? null;
+  const metaValue = target?.target_adjusted ?? goalMeta ?? target?.target_calculated ?? null;
   const attainment =
     metaValue && Number(metaValue) > 0 && target?.revenue_actual !== null && target?.revenue_actual !== undefined
       ? (Number(target.revenue_actual) / Number(metaValue)) * 100
       : null;
+
 
   const openMutation = useMutation({
     mutationFn: async () => open({ data: { store_id: storeId, year: period.year, month: period.month } }),
