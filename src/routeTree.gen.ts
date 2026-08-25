@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
 import { Route as AuthenticatedCadastrosRouteImport } from './routes/_authenticated/cadastros'
 import { Route as AuthenticatedLancamentoRouteImport } from './routes/_authenticated/lancamento'
+import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/metas'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
 import { Route as AuthenticatedPeriodosRouteImport } from './routes/_authenticated/periodos'
 import { Route as AuthenticatedRegrasRouteImport } from './routes/_authenticated/regras'
@@ -48,6 +49,11 @@ const AuthenticatedLancamentoRoute = AuthenticatedLancamentoRouteImport.update({
   path: '/lancamento',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMetasRoute = AuthenticatedMetasRouteImport.update({
+  id: '/metas',
+  path: '/metas',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedPainelRoute = AuthenticatedPainelRouteImport.update({
   id: '/painel',
   path: '/painel',
@@ -70,6 +76,7 @@ export interface FileRoutesByFullPath {
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/cadastros': typeof AuthenticatedCadastrosRoute
   '/lancamento': typeof AuthenticatedLancamentoRoute
+  '/metas': typeof AuthenticatedMetasRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/periodos': typeof AuthenticatedPeriodosRoute
   '/regras': typeof AuthenticatedRegrasRoute
@@ -80,6 +87,7 @@ export interface FileRoutesByTo {
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/cadastros': typeof AuthenticatedCadastrosRoute
   '/lancamento': typeof AuthenticatedLancamentoRoute
+  '/metas': typeof AuthenticatedMetasRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/periodos': typeof AuthenticatedPeriodosRoute
   '/regras': typeof AuthenticatedRegrasRoute
@@ -92,6 +100,7 @@ export interface FileRoutesById {
   '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
   '/_authenticated/cadastros': typeof AuthenticatedCadastrosRoute
   '/_authenticated/lancamento': typeof AuthenticatedLancamentoRoute
+  '/_authenticated/metas': typeof AuthenticatedMetasRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
   '/_authenticated/periodos': typeof AuthenticatedPeriodosRoute
   '/_authenticated/regras': typeof AuthenticatedRegrasRoute
@@ -104,6 +113,7 @@ export interface FileRouteTypes {
     | '/auditoria'
     | '/cadastros'
     | '/lancamento'
+    | '/metas'
     | '/painel'
     | '/periodos'
     | '/regras'
@@ -114,6 +124,7 @@ export interface FileRouteTypes {
     | '/auditoria'
     | '/cadastros'
     | '/lancamento'
+    | '/metas'
     | '/painel'
     | '/periodos'
     | '/regras'
@@ -125,6 +136,7 @@ export interface FileRouteTypes {
     | '/_authenticated/auditoria'
     | '/_authenticated/cadastros'
     | '/_authenticated/lancamento'
+    | '/_authenticated/metas'
     | '/_authenticated/painel'
     | '/_authenticated/periodos'
     | '/_authenticated/regras'
@@ -180,6 +192,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLancamentoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/metas': {
+      id: '/_authenticated/metas'
+      path: '/metas'
+      fullPath: '/metas'
+      preLoaderRoute: typeof AuthenticatedMetasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/painel': {
       id: '/_authenticated/painel'
       path: '/painel'
@@ -208,6 +227,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAuditoriaRoute: typeof AuthenticatedAuditoriaRoute
   AuthenticatedCadastrosRoute: typeof AuthenticatedCadastrosRoute
   AuthenticatedLancamentoRoute: typeof AuthenticatedLancamentoRoute
+  AuthenticatedMetasRoute: typeof AuthenticatedMetasRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
   AuthenticatedPeriodosRoute: typeof AuthenticatedPeriodosRoute
   AuthenticatedRegrasRoute: typeof AuthenticatedRegrasRoute
@@ -217,6 +237,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAuditoriaRoute: AuthenticatedAuditoriaRoute,
   AuthenticatedCadastrosRoute: AuthenticatedCadastrosRoute,
   AuthenticatedLancamentoRoute: AuthenticatedLancamentoRoute,
+  AuthenticatedMetasRoute: AuthenticatedMetasRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,
   AuthenticatedPeriodosRoute: AuthenticatedPeriodosRoute,
   AuthenticatedRegrasRoute: AuthenticatedRegrasRoute,
