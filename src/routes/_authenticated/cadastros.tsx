@@ -131,7 +131,7 @@ function StoresTab({ editable }: { editable: boolean }) {
                 <TableRow key={s.id}>
                   <TableCell className="font-medium">{s.name}</TableCell>
                   <TableCell>{s.code ?? "—"}</TableCell>
-                  <TableCell>{s.city ?? "—"}</TableCell>
+                  <TableCell>{s.city ?? "Espírito Santo"}</TableCell>
                   <TableCell>{s.state ?? "—"}</TableCell>
                   <TableCell>
                     <Switch
