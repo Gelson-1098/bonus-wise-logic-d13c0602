@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Bell, ChevronRight, CircleHelp, LogOut, Search, Settings2, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAccess } from "@/hooks/use-auth";
+import { useAuthorizationGate } from "@/hooks/use-auth";
 import { buildCrumbs } from "@/lib/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
