@@ -7,6 +7,8 @@ import {
   SlidersHorizontal,
   Building2,
   History,
+  Target,
+
   LogOut,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
