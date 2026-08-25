@@ -35,14 +35,14 @@ import type { CriterionStatus } from "@/lib/bonus-engine";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/lancamentos")({
   head: () => ({
     meta: [
-      { title: "Lançamento de resultados | DEX BONUS" },
+      { title: "Lançamento de resultados | VÉRTICE" },
       {
         name: "description",
         content:
           "Lance metas, faturamento e indicadores de cada colaborador para o cálculo automático do bônus mensal.",
       },
-      { property: "og:title", content: "Lançamento de resultados | DEX BONUS" },
-      { property: "og:description", content: "Preenchimento mensal de indicadores por loja." },
+      { property: "og:title", content: "Lançamento de resultados | VÉRTICE" },
+      { property: "og:description", content: "Lance metas, faturamento e indicadores de cada colaborador para o cálculo automático do bônus mensal." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

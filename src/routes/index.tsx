@@ -7,16 +7,16 @@ import { useSession } from "@/hooks/use-auth";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "DEX BONUS — Gestão de bonificação das lojas DEX Invest" },
+      { title: "VÉRTICE — Gestão & Performance" },
       {
         name: "description",
         content:
-          "Plataforma da DEX Invest para calcular, conferir e pagar bônus por loja com regras versionadas, gatilho de meta e auditoria completa.",
+          "Plataforma corporativa de gestão e performance: operação, indicadores, remuneração, metas e auditoria em um só lugar.",
       },
-      { property: "og:title", content: "DEX BONUS — Gestão de bonificação" },
+      { property: "og:title", content: "VÉRTICE — Gestão & Performance" },
       {
         property: "og:description",
-        content: "Cálculo automático de bônus por loja, com regras configuráveis e histórico imutável.",
+        content: "Plataforma corporativa de gestão e performance: operação, indicadores, remuneração, metas e auditoria em um só lugar.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

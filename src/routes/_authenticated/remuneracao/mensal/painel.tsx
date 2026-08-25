@@ -14,14 +14,14 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/painel")({
   head: () => ({
     meta: [
-      { title: "Painel executivo | DEX BONUS" },
+      { title: "Painel executivo | VÉRTICE" },
       {
         name: "description",
         content:
           "Acompanhe atingimento de metas, elegibilidade e valores de bônus por loja em cada competência.",
       },
-      { property: "og:title", content: "Painel executivo | DEX BONUS" },
-      { property: "og:description", content: "Indicadores de bonificação das lojas DEX Invest." },
+      { property: "og:title", content: "Painel executivo | VÉRTICE" },
+      { property: "og:description", content: "Acompanhe atingimento de metas, elegibilidade e valores de bônus por loja em cada competência." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

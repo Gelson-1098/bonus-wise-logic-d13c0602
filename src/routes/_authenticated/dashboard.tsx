@@ -14,16 +14,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "Dashboard | Plataforma DEX Invest" },
+      { title: "Dashboard | VÉRTICE" },
       {
         name: "description",
         content:
-          "Visão geral da plataforma DEX Invest: lojas ativas, colaboradores, períodos de remuneração em andamento e acesso aos universos de gestão.",
+          "Visão geral da VÉRTICE: lojas ativas, colaboradores, períodos de remuneração em andamento e acesso aos universos de gestão.",
       },
-      { property: "og:title", content: "Dashboard | Plataforma DEX Invest" },
+      { property: "og:title", content: "Dashboard | VÉRTICE" },
       {
         property: "og:description",
-        content: "Painel inicial da plataforma corporativa da DEX Invest.",
+        content: "Visão geral da VÉRTICE: lojas ativas, colaboradores, períodos de remuneração em andamento e acesso aos universos de gestão.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
