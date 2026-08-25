@@ -125,23 +125,38 @@ export function AppSidebar() {
                       </CollapsibleTrigger>
                       <CollapsibleContent>
                         <SidebarMenuSub>
-                          {universe.items.map((item) => {
+                          {universe.items.map((item, index) => {
                             const active = pathname.startsWith(item.to);
+                            const parts = item.label.split(" · ");
+                            const group = parts.length > 1 ? parts[0] : null;
+                            const leaf = parts[parts.length - 1] ?? item.label;
+                            const prevGroup =
+                              index > 0
+                                ? (universe.items?.[index - 1]?.label.split(" · ")[0] ?? null)
+                                : null;
+                            const showGroup = !!group && group !== prevGroup;
                             return (
-                              <SidebarMenuSubItem key={item.to}>
-                                <SidebarMenuSubButton asChild isActive={active}>
-                                  <Link {...linkTo(item.to)}>
-                                    <span
-                                      className={cn(
-                                        "truncate",
-                                        active && "font-medium text-sidebar-accent-foreground",
-                                      )}
-                                    >
-                                      {item.label.replace(" · ", " › ")}
-                                    </span>
-                                  </Link>
-                                </SidebarMenuSubButton>
-                              </SidebarMenuSubItem>
+                              <div key={item.to}>
+                                {showGroup && (
+                                  <p className="mt-2 px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/50">
+                                    {group}
+                                  </p>
+                                )}
+                                <SidebarMenuSubItem>
+                                  <SidebarMenuSubButton asChild isActive={active}>
+                                    <Link {...linkTo(item.to)}>
+                                      <span
+                                        className={cn(
+                                          "truncate",
+                                          active && "font-medium text-sidebar-accent-foreground",
+                                        )}
+                                      >
+                                        {leaf}
+                                      </span>
+                                    </Link>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                              </div>
                             );
                           })}
                         </SidebarMenuSub>
