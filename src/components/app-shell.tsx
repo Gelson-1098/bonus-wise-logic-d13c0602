@@ -49,7 +49,7 @@ export function PlatformShell({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const crumbs = buildCrumbs(pathname);
-  const { data: access } = useAccess();
+  const access = useAuthorizationGate();
 
   async function signOut() {
     await supabase.auth.signOut();
