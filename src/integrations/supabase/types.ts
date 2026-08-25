@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          description: string | null
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          description?: string | null
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          description?: string | null
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string
@@ -613,6 +637,62 @@ export type Database = {
         }
         Relationships: []
       }
+      revenue_history: {
+        Row: {
+          created_at: string
+          faturamento_base_meta: number | null
+          id: string
+          imported_at: string
+          imported_by: string | null
+          month: number
+          receita_vendas: number
+          source_file: string | null
+          store_id: string
+          taxa_servico: number
+          tc: number
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          created_at?: string
+          faturamento_base_meta?: number | null
+          id?: string
+          imported_at?: string
+          imported_by?: string | null
+          month: number
+          receita_vendas?: number
+          source_file?: string | null
+          store_id: string
+          taxa_servico?: number
+          tc?: number
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          created_at?: string
+          faturamento_base_meta?: number | null
+          id?: string
+          imported_at?: string
+          imported_by?: string | null
+          month?: number
+          receita_vendas?: number
+          source_file?: string | null
+          store_id?: string
+          taxa_servico?: number
+          tc?: number
+          updated_at?: string
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revenue_history_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       secullum_records: {
         Row: {
           employee_id: string | null
@@ -743,12 +823,78 @@ export type Database = {
           },
         ]
       }
+      store_goals: {
+        Row: {
+          base_year: number
+          created_at: string
+          faturamento_base_ano_anterior: number
+          generated_at: string
+          generated_by: string | null
+          growth_fat_pct: number
+          growth_tc_pct: number
+          id: string
+          meta_faturamento: number
+          meta_tc: number
+          month: number
+          store_id: string
+          tc_ano_anterior: number
+          updated_at: string
+          version: number
+          year: number
+        }
+        Insert: {
+          base_year: number
+          created_at?: string
+          faturamento_base_ano_anterior?: number
+          generated_at?: string
+          generated_by?: string | null
+          growth_fat_pct?: number
+          growth_tc_pct?: number
+          id?: string
+          meta_faturamento?: number
+          meta_tc?: number
+          month: number
+          store_id: string
+          tc_ano_anterior?: number
+          updated_at?: string
+          version?: number
+          year: number
+        }
+        Update: {
+          base_year?: number
+          created_at?: string
+          faturamento_base_ano_anterior?: number
+          generated_at?: string
+          generated_by?: string | null
+          growth_fat_pct?: number
+          growth_tc_pct?: number
+          id?: string
+          meta_faturamento?: number
+          meta_tc?: number
+          month?: number
+          store_id?: string
+          tc_ano_anterior?: number
+          updated_at?: string
+          version?: number
+          year?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_goals_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       store_targets: {
         Row: {
           base_history: number | null
           created_at: string
           growth_pct: number | null
           id: string
+          manager_note: string | null
           notes: string | null
           period_id: string
           revenue_actual: number | null
@@ -762,6 +908,7 @@ export type Database = {
           created_at?: string
           growth_pct?: number | null
           id?: string
+          manager_note?: string | null
           notes?: string | null
           period_id: string
           revenue_actual?: number | null
@@ -775,6 +922,7 @@ export type Database = {
           created_at?: string
           growth_pct?: number | null
           id?: string
+          manager_note?: string | null
           notes?: string | null
           period_id?: string
           revenue_actual?: number | null
