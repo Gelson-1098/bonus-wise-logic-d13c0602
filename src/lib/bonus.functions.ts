@@ -283,8 +283,20 @@ export const openPeriod = createServerFn({ method: "POST" })
         .single();
       if (error) throw new Error(error.message);
       periodId = created.id;
-      await supabase.from("store_targets").insert({ period_id: periodId, updated_by: userId });
+      const { data: goal } = await supabase
+        .from("store_goals")
+        .select("meta_faturamento")
+        .eq("store_id", data.store_id)
+        .eq("year", data.year)
+        .eq("month", data.month)
+        .maybeSingle();
+      await supabase.from("store_targets").insert({
+        period_id: periodId,
+        updated_by: userId,
+        target_calculated: goal?.meta_faturamento ?? null,
+      });
     }
+
 
     const { data: employees } = await supabase
       .from("employees")
