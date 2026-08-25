@@ -217,6 +217,52 @@ function RegrasPage() {
     () => (criteria.data ?? []).filter((c) => !c.is_eliminatory).reduce((s, c) => s + Number(c.value_brl ?? 0), 0),
     [criteria.data],
   );
+  const missingTarget = useMemo(
+    () =>
+      (criteria.data ?? []).filter(
+        (c) => c.active && !c.target_text?.trim() && c.target_value === null,
+      ),
+    [criteria.data],
+  );
+  const rows = criteria.data ?? [];
+  const baseValue = position?.base_value === null || position?.base_value === undefined ? null : Number(position.base_value);
+  const checks = useMemo(() => {
+    if (rows.length === 0) return [];
+    return [
+      {
+        ok: Math.abs(weightSum - 100) <= 0.01,
+        label: "Soma dos pesos = 100%",
+        detail: `Atual: ${weightSum.toFixed(2)}%`,
+      },
+      {
+        ok: baseValue !== null && Math.abs(valueSum - baseValue) <= 0.01,
+        label: "Soma dos valores = bônus máximo do cargo",
+        detail:
+          baseValue === null
+            ? "Cargo sem valor base configurado"
+            : `Atual: ${brl(valueSum)} · máximo: ${brl(baseValue)}`,
+      },
+      {
+        ok: missingTarget.length === 0,
+        label: "Todo indicador com regra de atingimento própria",
+        detail:
+          missingTarget.length === 0
+            ? "Todos os indicadores ativos possuem meta definida"
+            : `Sem meta: ${missingTarget.map((c) => c.name).join(", ")}`,
+      },
+      {
+        ok: baseValue === null || valueSum <= baseValue + 0.01,
+        label: "Teto por cargo respeitado no cálculo",
+        detail:
+          baseValue === null
+            ? "Cargo sem valor base configurado"
+            : valueSum <= baseValue + 0.01
+              ? `O pagamento nunca excede ${brl(baseValue)}`
+              : `Os valores somam ${brl(valueSum)}, acima do teto ${brl(baseValue)} — o cálculo limitará ao teto`,
+      },
+    ];
+  }, [rows.length, weightSum, valueSum, baseValue, missingTarget]);
+
 
   return (
     <AppShell
