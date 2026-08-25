@@ -23,14 +23,14 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/periodos")({
   head: () => ({
     meta: [
-      { title: "Períodos e conferência | DEX BONUS" },
+      { title: "Períodos e conferência | VÉRTICE" },
       {
         name: "description",
         content:
           "Confira, aprove, feche e exporte os períodos de bonificação de cada loja com histórico imutável.",
       },
-      { property: "og:title", content: "Períodos e conferência | DEX BONUS" },
-      { property: "og:description", content: "Fluxo de conferência e aprovação do bônus mensal." },
+      { property: "og:title", content: "Períodos e conferência | VÉRTICE" },
+      { property: "og:description", content: "Confira, aprove, feche e exporte os períodos de bonificação de cada loja com histórico imutável." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

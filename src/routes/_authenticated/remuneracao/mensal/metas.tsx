@@ -41,16 +41,16 @@ import { brl, MONTHS, periodLabel } from "@/lib/format";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/metas")({
   head: () => ({
     meta: [
-      { title: "Metas de faturamento e TC | DEX BONUS" },
+      { title: "Metas de faturamento e TC | VÉRTICE" },
       {
         name: "description",
         content:
           "Importe o faturamento do ano anterior, gere automaticamente as metas de faturamento e de clientes atendidos e acompanhe a meta de cada loja.",
       },
-      { property: "og:title", content: "Metas de faturamento e TC | DEX BONUS" },
+      { property: "og:title", content: "Metas de faturamento e TC | VÉRTICE" },
       {
         property: "og:description",
-        content: "Receita de vendas + taxa de serviço, base da meta e crescimento configurável por loja e mês.",
+        content: "Importe o faturamento do ano anterior, gere automaticamente as metas de faturamento e de clientes atendidos e acompanhe a meta de cada loja.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

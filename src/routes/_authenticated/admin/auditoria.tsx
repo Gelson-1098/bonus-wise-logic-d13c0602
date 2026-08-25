@@ -8,13 +8,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export const Route = createFileRoute("/_authenticated/admin/auditoria")({
   head: () => ({
     meta: [
-      { title: "Auditoria | DEX BONUS" },
+      { title: "Auditoria | VÉRTICE" },
       {
         name: "description",
         content: "Histórico completo de cálculos, aprovações, reaberturas e justificativas do bônus.",
       },
-      { property: "og:title", content: "Auditoria | DEX BONUS" },
-      { property: "og:description", content: "Trilha de auditoria das decisões de bonificação." },
+      { property: "og:title", content: "Auditoria | VÉRTICE" },
+      { property: "og:description", content: "Histórico completo de cálculos, aprovações, reaberturas e justificativas do bônus." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

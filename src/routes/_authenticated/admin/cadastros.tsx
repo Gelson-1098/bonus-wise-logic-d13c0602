@@ -20,13 +20,13 @@ import { brl } from "@/lib/format";
 export const Route = createFileRoute("/_authenticated/admin/cadastros")({
   head: () => ({
     meta: [
-      { title: "Cadastros | DEX BONUS" },
+      { title: "Cadastros | VÉRTICE" },
       {
         name: "description",
-        content: "Gerencie lojas, cargos, valores base e colaboradores elegíveis ao bônus da DEX Invest.",
+        content: "Gerencie lojas, cargos, valores base e colaboradores elegíveis ao bônus.",
       },
-      { property: "og:title", content: "Cadastros | DEX BONUS" },
-      { property: "og:description", content: "Lojas, cargos e colaboradores do programa de bonificação." },
+      { property: "og:title", content: "Cadastros | VÉRTICE" },
+      { property: "og:description", content: "Gerencie lojas, cargos, valores base e colaboradores elegíveis ao bônus." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

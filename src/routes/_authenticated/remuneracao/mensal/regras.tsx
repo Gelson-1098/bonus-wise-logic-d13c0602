@@ -20,14 +20,14 @@ import { brl } from "@/lib/format";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/regras")({
   head: () => ({
     meta: [
-      { title: "Motor de regras | DEX BONUS" },
+      { title: "Motor de regras | VÉRTICE" },
       {
         name: "description",
         content:
           "Configure versões trimestrais, gatilhos, pesos e valores dos indicadores de bônus por cargo, sem alterar históricos.",
       },
-      { property: "og:title", content: "Motor de regras | DEX BONUS" },
-      { property: "og:description", content: "Parametrização das regras de bonificação por cargo." },
+      { property: "og:title", content: "Motor de regras | VÉRTICE" },
+      { property: "og:description", content: "Configure versões trimestrais, gatilhos, pesos e valores dos indicadores de bônus por cargo, sem alterar históricos." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
