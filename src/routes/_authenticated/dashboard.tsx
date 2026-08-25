@@ -65,8 +65,8 @@ function DashboardPage() {
 
   return (
     <AppShell
-      title="Plataforma DEX Invest"
-      description="Visão geral dos universos de gestão"
+      title="VÉRTICE"
+      description="Gestão & Performance — visão geral dos universos"
       actions={
         <Button asChild>
           <Link to="/remuneracao/mensal/lancamentos">
