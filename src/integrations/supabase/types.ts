@@ -615,6 +615,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active: boolean
           created_at: string
           email: string | null
           full_name: string | null
@@ -622,6 +623,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          active?: boolean
           created_at?: string
           email?: string | null
           full_name?: string | null
@@ -629,6 +631,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          active?: boolean
           created_at?: string
           email?: string | null
           full_name?: string | null
@@ -1112,7 +1115,7 @@ export type Database = {
       is_master: { Args: never; Returns: boolean }
     }
     Enums: {
-      app_role: "master" | "gerente"
+      app_role: "master" | "gerente" | "treinador"
       criterion_status: "atingiu" | "nao_atingiu" | "nao_aplicavel"
       period_status:
         | "aberto"
@@ -1251,7 +1254,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["master", "gerente"],
+      app_role: ["master", "gerente", "treinador"],
       criterion_status: ["atingiu", "nao_atingiu", "nao_aplicavel"],
       period_status: [
         "aberto",
