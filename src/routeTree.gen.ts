@@ -14,11 +14,28 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
 import { Route as AuthenticatedCadastrosRouteImport } from './routes/_authenticated/cadastros'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedLancamentoRouteImport } from './routes/_authenticated/lancamento'
 import { Route as AuthenticatedMetasRouteImport } from './routes/_authenticated/metas'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
 import { Route as AuthenticatedPeriodosRouteImport } from './routes/_authenticated/periodos'
 import { Route as AuthenticatedRegrasRouteImport } from './routes/_authenticated/regras'
+import { Route as AuthenticatedAdminSplatRouteImport } from './routes/_authenticated/admin/$'
+import { Route as AuthenticatedAdminAuditoriaRouteImport } from './routes/_authenticated/admin/auditoria'
+import { Route as AuthenticatedAdminCadastrosRouteImport } from './routes/_authenticated/admin/cadastros'
+import { Route as AuthenticatedAuditoriasSplatRouteImport } from './routes/_authenticated/auditorias/$'
+import { Route as AuthenticatedAvaliacoesSplatRouteImport } from './routes/_authenticated/avaliacoes/$'
+import { Route as AuthenticatedBeneficiosSplatRouteImport } from './routes/_authenticated/beneficios/$'
+import { Route as AuthenticatedKpiSplatRouteImport } from './routes/_authenticated/kpi/$'
+import { Route as AuthenticatedOperacaoSplatRouteImport } from './routes/_authenticated/operacao/$'
+import { Route as AuthenticatedRelatoriosSplatRouteImport } from './routes/_authenticated/relatorios/$'
+import { Route as AuthenticatedTreinamentoSplatRouteImport } from './routes/_authenticated/treinamento/$'
+import { Route as AuthenticatedRemuneracaoMensalLancamentosRouteImport } from './routes/_authenticated/remuneracao/mensal/lancamentos'
+import { Route as AuthenticatedRemuneracaoMensalMetasRouteImport } from './routes/_authenticated/remuneracao/mensal/metas'
+import { Route as AuthenticatedRemuneracaoMensalPainelRouteImport } from './routes/_authenticated/remuneracao/mensal/painel'
+import { Route as AuthenticatedRemuneracaoMensalPeriodosRouteImport } from './routes/_authenticated/remuneracao/mensal/periodos'
+import { Route as AuthenticatedRemuneracaoMensalRegrasRouteImport } from './routes/_authenticated/remuneracao/mensal/regras'
+import { Route as AuthenticatedRemuneracaoPlrSplatRouteImport } from './routes/_authenticated/remuneracao/plr/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -42,6 +59,11 @@ const AuthenticatedAuditoriaRoute = AuthenticatedAuditoriaRouteImport.update({
 const AuthenticatedCadastrosRoute = AuthenticatedCadastrosRouteImport.update({
   id: '/cadastros',
   path: '/cadastros',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedLancamentoRoute = AuthenticatedLancamentoRouteImport.update({
@@ -69,28 +91,156 @@ const AuthenticatedRegrasRoute = AuthenticatedRegrasRouteImport.update({
   path: '/regras',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAdminSplatRoute = AuthenticatedAdminSplatRouteImport.update({
+  id: '/admin/$',
+  path: '/admin/$',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAdminAuditoriaRoute =
+  AuthenticatedAdminAuditoriaRouteImport.update({
+    id: '/admin/auditoria',
+    path: '/admin/auditoria',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminCadastrosRoute =
+  AuthenticatedAdminCadastrosRouteImport.update({
+    id: '/admin/cadastros',
+    path: '/admin/cadastros',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAuditoriasSplatRoute =
+  AuthenticatedAuditoriasSplatRouteImport.update({
+    id: '/auditorias/$',
+    path: '/auditorias/$',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAvaliacoesSplatRoute =
+  AuthenticatedAvaliacoesSplatRouteImport.update({
+    id: '/avaliacoes/$',
+    path: '/avaliacoes/$',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedBeneficiosSplatRoute =
+  AuthenticatedBeneficiosSplatRouteImport.update({
+    id: '/beneficios/$',
+    path: '/beneficios/$',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedKpiSplatRoute = AuthenticatedKpiSplatRouteImport.update({
+  id: '/kpi/$',
+  path: '/kpi/$',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedOperacaoSplatRoute =
+  AuthenticatedOperacaoSplatRouteImport.update({
+    id: '/operacao/$',
+    path: '/operacao/$',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRelatoriosSplatRoute =
+  AuthenticatedRelatoriosSplatRouteImport.update({
+    id: '/relatorios/$',
+    path: '/relatorios/$',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedTreinamentoSplatRoute =
+  AuthenticatedTreinamentoSplatRouteImport.update({
+    id: '/treinamento/$',
+    path: '/treinamento/$',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRemuneracaoMensalLancamentosRoute =
+  AuthenticatedRemuneracaoMensalLancamentosRouteImport.update({
+    id: '/remuneracao/mensal/lancamentos',
+    path: '/remuneracao/mensal/lancamentos',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRemuneracaoMensalMetasRoute =
+  AuthenticatedRemuneracaoMensalMetasRouteImport.update({
+    id: '/remuneracao/mensal/metas',
+    path: '/remuneracao/mensal/metas',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRemuneracaoMensalPainelRoute =
+  AuthenticatedRemuneracaoMensalPainelRouteImport.update({
+    id: '/remuneracao/mensal/painel',
+    path: '/remuneracao/mensal/painel',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRemuneracaoMensalPeriodosRoute =
+  AuthenticatedRemuneracaoMensalPeriodosRouteImport.update({
+    id: '/remuneracao/mensal/periodos',
+    path: '/remuneracao/mensal/periodos',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRemuneracaoMensalRegrasRoute =
+  AuthenticatedRemuneracaoMensalRegrasRouteImport.update({
+    id: '/remuneracao/mensal/regras',
+    path: '/remuneracao/mensal/regras',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRemuneracaoPlrSplatRoute =
+  AuthenticatedRemuneracaoPlrSplatRouteImport.update({
+    id: '/remuneracao/plr/$',
+    path: '/remuneracao/plr/$',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/cadastros': typeof AuthenticatedCadastrosRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
   '/lancamento': typeof AuthenticatedLancamentoRoute
   '/metas': typeof AuthenticatedMetasRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/periodos': typeof AuthenticatedPeriodosRoute
   '/regras': typeof AuthenticatedRegrasRoute
+  '/admin/$': typeof AuthenticatedAdminSplatRoute
+  '/admin/auditoria': typeof AuthenticatedAdminAuditoriaRoute
+  '/admin/cadastros': typeof AuthenticatedAdminCadastrosRoute
+  '/auditorias/$': typeof AuthenticatedAuditoriasSplatRoute
+  '/avaliacoes/$': typeof AuthenticatedAvaliacoesSplatRoute
+  '/beneficios/$': typeof AuthenticatedBeneficiosSplatRoute
+  '/kpi/$': typeof AuthenticatedKpiSplatRoute
+  '/operacao/$': typeof AuthenticatedOperacaoSplatRoute
+  '/relatorios/$': typeof AuthenticatedRelatoriosSplatRoute
+  '/treinamento/$': typeof AuthenticatedTreinamentoSplatRoute
+  '/remuneracao/mensal/lancamentos': typeof AuthenticatedRemuneracaoMensalLancamentosRoute
+  '/remuneracao/mensal/metas': typeof AuthenticatedRemuneracaoMensalMetasRoute
+  '/remuneracao/mensal/painel': typeof AuthenticatedRemuneracaoMensalPainelRoute
+  '/remuneracao/mensal/periodos': typeof AuthenticatedRemuneracaoMensalPeriodosRoute
+  '/remuneracao/mensal/regras': typeof AuthenticatedRemuneracaoMensalRegrasRoute
+  '/remuneracao/plr/$': typeof AuthenticatedRemuneracaoPlrSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
   '/cadastros': typeof AuthenticatedCadastrosRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
   '/lancamento': typeof AuthenticatedLancamentoRoute
   '/metas': typeof AuthenticatedMetasRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/periodos': typeof AuthenticatedPeriodosRoute
   '/regras': typeof AuthenticatedRegrasRoute
+  '/admin/$': typeof AuthenticatedAdminSplatRoute
+  '/admin/auditoria': typeof AuthenticatedAdminAuditoriaRoute
+  '/admin/cadastros': typeof AuthenticatedAdminCadastrosRoute
+  '/auditorias/$': typeof AuthenticatedAuditoriasSplatRoute
+  '/avaliacoes/$': typeof AuthenticatedAvaliacoesSplatRoute
+  '/beneficios/$': typeof AuthenticatedBeneficiosSplatRoute
+  '/kpi/$': typeof AuthenticatedKpiSplatRoute
+  '/operacao/$': typeof AuthenticatedOperacaoSplatRoute
+  '/relatorios/$': typeof AuthenticatedRelatoriosSplatRoute
+  '/treinamento/$': typeof AuthenticatedTreinamentoSplatRoute
+  '/remuneracao/mensal/lancamentos': typeof AuthenticatedRemuneracaoMensalLancamentosRoute
+  '/remuneracao/mensal/metas': typeof AuthenticatedRemuneracaoMensalMetasRoute
+  '/remuneracao/mensal/painel': typeof AuthenticatedRemuneracaoMensalPainelRoute
+  '/remuneracao/mensal/periodos': typeof AuthenticatedRemuneracaoMensalPeriodosRoute
+  '/remuneracao/mensal/regras': typeof AuthenticatedRemuneracaoMensalRegrasRoute
+  '/remuneracao/plr/$': typeof AuthenticatedRemuneracaoPlrSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -99,11 +249,28 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
   '/_authenticated/cadastros': typeof AuthenticatedCadastrosRoute
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/lancamento': typeof AuthenticatedLancamentoRoute
   '/_authenticated/metas': typeof AuthenticatedMetasRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
   '/_authenticated/periodos': typeof AuthenticatedPeriodosRoute
   '/_authenticated/regras': typeof AuthenticatedRegrasRoute
+  '/_authenticated/admin/$': typeof AuthenticatedAdminSplatRoute
+  '/_authenticated/admin/auditoria': typeof AuthenticatedAdminAuditoriaRoute
+  '/_authenticated/admin/cadastros': typeof AuthenticatedAdminCadastrosRoute
+  '/_authenticated/auditorias/$': typeof AuthenticatedAuditoriasSplatRoute
+  '/_authenticated/avaliacoes/$': typeof AuthenticatedAvaliacoesSplatRoute
+  '/_authenticated/beneficios/$': typeof AuthenticatedBeneficiosSplatRoute
+  '/_authenticated/kpi/$': typeof AuthenticatedKpiSplatRoute
+  '/_authenticated/operacao/$': typeof AuthenticatedOperacaoSplatRoute
+  '/_authenticated/relatorios/$': typeof AuthenticatedRelatoriosSplatRoute
+  '/_authenticated/treinamento/$': typeof AuthenticatedTreinamentoSplatRoute
+  '/_authenticated/remuneracao/mensal/lancamentos': typeof AuthenticatedRemuneracaoMensalLancamentosRoute
+  '/_authenticated/remuneracao/mensal/metas': typeof AuthenticatedRemuneracaoMensalMetasRoute
+  '/_authenticated/remuneracao/mensal/painel': typeof AuthenticatedRemuneracaoMensalPainelRoute
+  '/_authenticated/remuneracao/mensal/periodos': typeof AuthenticatedRemuneracaoMensalPeriodosRoute
+  '/_authenticated/remuneracao/mensal/regras': typeof AuthenticatedRemuneracaoMensalRegrasRoute
+  '/_authenticated/remuneracao/plr/$': typeof AuthenticatedRemuneracaoPlrSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -112,22 +279,56 @@ export interface FileRouteTypes {
     | '/auth'
     | '/auditoria'
     | '/cadastros'
+    | '/dashboard'
     | '/lancamento'
     | '/metas'
     | '/painel'
     | '/periodos'
     | '/regras'
+    | '/admin/$'
+    | '/admin/auditoria'
+    | '/admin/cadastros'
+    | '/auditorias/$'
+    | '/avaliacoes/$'
+    | '/beneficios/$'
+    | '/kpi/$'
+    | '/operacao/$'
+    | '/relatorios/$'
+    | '/treinamento/$'
+    | '/remuneracao/mensal/lancamentos'
+    | '/remuneracao/mensal/metas'
+    | '/remuneracao/mensal/painel'
+    | '/remuneracao/mensal/periodos'
+    | '/remuneracao/mensal/regras'
+    | '/remuneracao/plr/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/auditoria'
     | '/cadastros'
+    | '/dashboard'
     | '/lancamento'
     | '/metas'
     | '/painel'
     | '/periodos'
     | '/regras'
+    | '/admin/$'
+    | '/admin/auditoria'
+    | '/admin/cadastros'
+    | '/auditorias/$'
+    | '/avaliacoes/$'
+    | '/beneficios/$'
+    | '/kpi/$'
+    | '/operacao/$'
+    | '/relatorios/$'
+    | '/treinamento/$'
+    | '/remuneracao/mensal/lancamentos'
+    | '/remuneracao/mensal/metas'
+    | '/remuneracao/mensal/painel'
+    | '/remuneracao/mensal/periodos'
+    | '/remuneracao/mensal/regras'
+    | '/remuneracao/plr/$'
   id:
     | '__root__'
     | '/'
@@ -135,11 +336,28 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/auditoria'
     | '/_authenticated/cadastros'
+    | '/_authenticated/dashboard'
     | '/_authenticated/lancamento'
     | '/_authenticated/metas'
     | '/_authenticated/painel'
     | '/_authenticated/periodos'
     | '/_authenticated/regras'
+    | '/_authenticated/admin/$'
+    | '/_authenticated/admin/auditoria'
+    | '/_authenticated/admin/cadastros'
+    | '/_authenticated/auditorias/$'
+    | '/_authenticated/avaliacoes/$'
+    | '/_authenticated/beneficios/$'
+    | '/_authenticated/kpi/$'
+    | '/_authenticated/operacao/$'
+    | '/_authenticated/relatorios/$'
+    | '/_authenticated/treinamento/$'
+    | '/_authenticated/remuneracao/mensal/lancamentos'
+    | '/_authenticated/remuneracao/mensal/metas'
+    | '/_authenticated/remuneracao/mensal/painel'
+    | '/_authenticated/remuneracao/mensal/periodos'
+    | '/_authenticated/remuneracao/mensal/regras'
+    | '/_authenticated/remuneracao/plr/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -185,6 +403,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCadastrosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/lancamento': {
       id: '/_authenticated/lancamento'
       path: '/lancamento'
@@ -220,27 +445,178 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRegrasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/$': {
+      id: '/_authenticated/admin/$'
+      path: '/admin/$'
+      fullPath: '/admin/$'
+      preLoaderRoute: typeof AuthenticatedAdminSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/auditoria': {
+      id: '/_authenticated/admin/auditoria'
+      path: '/admin/auditoria'
+      fullPath: '/admin/auditoria'
+      preLoaderRoute: typeof AuthenticatedAdminAuditoriaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/cadastros': {
+      id: '/_authenticated/admin/cadastros'
+      path: '/admin/cadastros'
+      fullPath: '/admin/cadastros'
+      preLoaderRoute: typeof AuthenticatedAdminCadastrosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/auditorias/$': {
+      id: '/_authenticated/auditorias/$'
+      path: '/auditorias/$'
+      fullPath: '/auditorias/$'
+      preLoaderRoute: typeof AuthenticatedAuditoriasSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/avaliacoes/$': {
+      id: '/_authenticated/avaliacoes/$'
+      path: '/avaliacoes/$'
+      fullPath: '/avaliacoes/$'
+      preLoaderRoute: typeof AuthenticatedAvaliacoesSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/beneficios/$': {
+      id: '/_authenticated/beneficios/$'
+      path: '/beneficios/$'
+      fullPath: '/beneficios/$'
+      preLoaderRoute: typeof AuthenticatedBeneficiosSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/kpi/$': {
+      id: '/_authenticated/kpi/$'
+      path: '/kpi/$'
+      fullPath: '/kpi/$'
+      preLoaderRoute: typeof AuthenticatedKpiSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/operacao/$': {
+      id: '/_authenticated/operacao/$'
+      path: '/operacao/$'
+      fullPath: '/operacao/$'
+      preLoaderRoute: typeof AuthenticatedOperacaoSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/relatorios/$': {
+      id: '/_authenticated/relatorios/$'
+      path: '/relatorios/$'
+      fullPath: '/relatorios/$'
+      preLoaderRoute: typeof AuthenticatedRelatoriosSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/treinamento/$': {
+      id: '/_authenticated/treinamento/$'
+      path: '/treinamento/$'
+      fullPath: '/treinamento/$'
+      preLoaderRoute: typeof AuthenticatedTreinamentoSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/remuneracao/mensal/lancamentos': {
+      id: '/_authenticated/remuneracao/mensal/lancamentos'
+      path: '/remuneracao/mensal/lancamentos'
+      fullPath: '/remuneracao/mensal/lancamentos'
+      preLoaderRoute: typeof AuthenticatedRemuneracaoMensalLancamentosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/remuneracao/mensal/metas': {
+      id: '/_authenticated/remuneracao/mensal/metas'
+      path: '/remuneracao/mensal/metas'
+      fullPath: '/remuneracao/mensal/metas'
+      preLoaderRoute: typeof AuthenticatedRemuneracaoMensalMetasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/remuneracao/mensal/painel': {
+      id: '/_authenticated/remuneracao/mensal/painel'
+      path: '/remuneracao/mensal/painel'
+      fullPath: '/remuneracao/mensal/painel'
+      preLoaderRoute: typeof AuthenticatedRemuneracaoMensalPainelRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/remuneracao/mensal/periodos': {
+      id: '/_authenticated/remuneracao/mensal/periodos'
+      path: '/remuneracao/mensal/periodos'
+      fullPath: '/remuneracao/mensal/periodos'
+      preLoaderRoute: typeof AuthenticatedRemuneracaoMensalPeriodosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/remuneracao/mensal/regras': {
+      id: '/_authenticated/remuneracao/mensal/regras'
+      path: '/remuneracao/mensal/regras'
+      fullPath: '/remuneracao/mensal/regras'
+      preLoaderRoute: typeof AuthenticatedRemuneracaoMensalRegrasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/remuneracao/plr/$': {
+      id: '/_authenticated/remuneracao/plr/$'
+      path: '/remuneracao/plr/$'
+      fullPath: '/remuneracao/plr/$'
+      preLoaderRoute: typeof AuthenticatedRemuneracaoPlrSplatRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAuditoriaRoute: typeof AuthenticatedAuditoriaRoute
   AuthenticatedCadastrosRoute: typeof AuthenticatedCadastrosRoute
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedLancamentoRoute: typeof AuthenticatedLancamentoRoute
   AuthenticatedMetasRoute: typeof AuthenticatedMetasRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
   AuthenticatedPeriodosRoute: typeof AuthenticatedPeriodosRoute
   AuthenticatedRegrasRoute: typeof AuthenticatedRegrasRoute
+  AuthenticatedAdminSplatRoute: typeof AuthenticatedAdminSplatRoute
+  AuthenticatedAdminAuditoriaRoute: typeof AuthenticatedAdminAuditoriaRoute
+  AuthenticatedAdminCadastrosRoute: typeof AuthenticatedAdminCadastrosRoute
+  AuthenticatedAuditoriasSplatRoute: typeof AuthenticatedAuditoriasSplatRoute
+  AuthenticatedAvaliacoesSplatRoute: typeof AuthenticatedAvaliacoesSplatRoute
+  AuthenticatedBeneficiosSplatRoute: typeof AuthenticatedBeneficiosSplatRoute
+  AuthenticatedKpiSplatRoute: typeof AuthenticatedKpiSplatRoute
+  AuthenticatedOperacaoSplatRoute: typeof AuthenticatedOperacaoSplatRoute
+  AuthenticatedRelatoriosSplatRoute: typeof AuthenticatedRelatoriosSplatRoute
+  AuthenticatedTreinamentoSplatRoute: typeof AuthenticatedTreinamentoSplatRoute
+  AuthenticatedRemuneracaoMensalLancamentosRoute: typeof AuthenticatedRemuneracaoMensalLancamentosRoute
+  AuthenticatedRemuneracaoMensalMetasRoute: typeof AuthenticatedRemuneracaoMensalMetasRoute
+  AuthenticatedRemuneracaoMensalPainelRoute: typeof AuthenticatedRemuneracaoMensalPainelRoute
+  AuthenticatedRemuneracaoMensalPeriodosRoute: typeof AuthenticatedRemuneracaoMensalPeriodosRoute
+  AuthenticatedRemuneracaoMensalRegrasRoute: typeof AuthenticatedRemuneracaoMensalRegrasRoute
+  AuthenticatedRemuneracaoPlrSplatRoute: typeof AuthenticatedRemuneracaoPlrSplatRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAuditoriaRoute: AuthenticatedAuditoriaRoute,
   AuthenticatedCadastrosRoute: AuthenticatedCadastrosRoute,
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedLancamentoRoute: AuthenticatedLancamentoRoute,
   AuthenticatedMetasRoute: AuthenticatedMetasRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,
   AuthenticatedPeriodosRoute: AuthenticatedPeriodosRoute,
   AuthenticatedRegrasRoute: AuthenticatedRegrasRoute,
+  AuthenticatedAdminSplatRoute: AuthenticatedAdminSplatRoute,
+  AuthenticatedAdminAuditoriaRoute: AuthenticatedAdminAuditoriaRoute,
+  AuthenticatedAdminCadastrosRoute: AuthenticatedAdminCadastrosRoute,
+  AuthenticatedAuditoriasSplatRoute: AuthenticatedAuditoriasSplatRoute,
+  AuthenticatedAvaliacoesSplatRoute: AuthenticatedAvaliacoesSplatRoute,
+  AuthenticatedBeneficiosSplatRoute: AuthenticatedBeneficiosSplatRoute,
+  AuthenticatedKpiSplatRoute: AuthenticatedKpiSplatRoute,
+  AuthenticatedOperacaoSplatRoute: AuthenticatedOperacaoSplatRoute,
+  AuthenticatedRelatoriosSplatRoute: AuthenticatedRelatoriosSplatRoute,
+  AuthenticatedTreinamentoSplatRoute: AuthenticatedTreinamentoSplatRoute,
+  AuthenticatedRemuneracaoMensalLancamentosRoute:
+    AuthenticatedRemuneracaoMensalLancamentosRoute,
+  AuthenticatedRemuneracaoMensalMetasRoute:
+    AuthenticatedRemuneracaoMensalMetasRoute,
+  AuthenticatedRemuneracaoMensalPainelRoute:
+    AuthenticatedRemuneracaoMensalPainelRoute,
+  AuthenticatedRemuneracaoMensalPeriodosRoute:
+    AuthenticatedRemuneracaoMensalPeriodosRoute,
+  AuthenticatedRemuneracaoMensalRegrasRoute:
+    AuthenticatedRemuneracaoMensalRegrasRoute,
+  AuthenticatedRemuneracaoPlrSplatRoute: AuthenticatedRemuneracaoPlrSplatRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

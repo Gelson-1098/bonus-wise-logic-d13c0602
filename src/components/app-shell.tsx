@@ -1,34 +1,42 @@
 import type { ReactNode } from "react";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import {
-  LayoutDashboard,
-  ClipboardList,
-  CalendarRange,
-  SlidersHorizontal,
-  Building2,
-  History,
-  Target,
-
-  LogOut,
-} from "lucide-react";
+import { Link, useRouterState } from "@tanstack/react-router";
+import { Bell, ChevronRight, CircleHelp, LogOut, Search, Settings2, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccess } from "@/hooks/use-auth";
+import { buildCrumbs } from "@/lib/navigation";
+import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
-const NAV = [
-  { to: "/painel", label: "Painel", icon: LayoutDashboard, master: false },
-  { to: "/lancamento", label: "Lançamento", icon: ClipboardList, master: false },
-  { to: "/metas", label: "Metas", icon: Target, master: false },
-  { to: "/periodos", label: "Períodos", icon: CalendarRange, master: false },
-  { to: "/regras", label: "Motor de regras", icon: SlidersHorizontal, master: true },
-  { to: "/cadastros", label: "Cadastros", icon: Building2, master: true },
-  { to: "/auditoria", label: "Auditoria", icon: History, master: true },
-] as const;
+function linkTo(to: string) {
+  return { to } as unknown as { to: "/" };
+}
 
+function initials(name: string | null | undefined) {
+  if (!name) return "DX";
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
-export function AppShell({
+/**
+ * Casca única da plataforma: sidebar hierárquica, header com breadcrumb,
+ * busca global, notificações e perfil do usuário.
+ */
+export function PlatformShell({
   title,
   description,
   actions,
@@ -39,87 +47,120 @@ export function AppShell({
   actions?: ReactNode;
   children: ReactNode;
 }) {
-  const { data: access } = useAccess();
-  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isMaster = access?.isMaster ?? false;
+  const crumbs = buildCrumbs(pathname);
+  const { data: access } = useAccess();
 
   async function signOut() {
     await supabase.auth.signOut();
-    navigate({ to: "/" });
+    window.location.assign("/");
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
-        <div className="border-b border-sidebar-border px-5 py-5">
-          <p className="text-lg font-semibold tracking-tight text-sidebar-accent-foreground">
-            DEX <span className="text-sidebar-primary">BONUS</span>
-          </p>
-          <p className="mt-1 text-xs text-sidebar-foreground/70">Gestão de bonificação</p>
-        </div>
-        <nav className="flex-1 space-y-1 p-3">
-          {NAV.filter((i) => !i.master || isMaster).map((item) => {
-            const active = pathname.startsWith(item.to);
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60",
-                )}
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="border-t border-sidebar-border p-4 text-xs">
-          <p className="truncate font-medium text-sidebar-accent-foreground">
-            {access?.fullName ?? access?.email ?? "—"}
-          </p>
-          <Badge variant="outline" className="mt-2 border-sidebar-border text-sidebar-foreground/80">
-            {isMaster ? "Master" : "Gerente"}
-          </Badge>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-3 w-full justify-start text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
-            onClick={signOut}
-          >
-            <LogOut className="size-4" /> Sair
-          </Button>
-        </div>
-      </aside>
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full bg-background">
+        <AppSidebar />
+        <SidebarInset className="min-w-0 bg-background">
+          <header className="sticky top-0 z-20 flex flex-col gap-2 border-b border-border bg-card/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:px-6">
+            <div className="flex items-center gap-2">
+              <SidebarTrigger className="-ml-1" />
+              <nav aria-label="Trilha de navegação" className="min-w-0 flex-1">
+                <ol className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                  {crumbs.map((crumb, i) => {
+                    const last = i === crumbs.length - 1;
+                    return (
+                      <li key={`${crumb.label}-${i}`} className="flex items-center gap-1">
+                        {i > 0 && <ChevronRight className="size-3.5 opacity-60" aria-hidden />}
+                        {crumb.to && !last ? (
+                          <Link
+                            {...linkTo(crumb.to)}
+                            className="transition-colors hover:text-foreground"
+                          >
+                            {crumb.label}
+                          </Link>
+                        ) : (
+                          <span className={cn(last && "font-medium text-foreground")}>
+                            {crumb.label}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </nav>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card px-5 py-4">
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
-            {description && <p className="text-sm text-muted-foreground">{description}</p>}
-          </div>
-          <div className="flex items-center gap-2">{actions}</div>
-        </header>
-        <div className="flex gap-1 overflow-x-auto border-b border-border bg-card px-3 py-2 lg:hidden">
-          {NAV.filter((i) => !i.master || isMaster).map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={cn(
-                "whitespace-nowrap rounded-md px-3 py-1.5 text-xs",
-                pathname.startsWith(item.to) ? "bg-secondary font-medium" : "text-muted-foreground",
-              )}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-        <main className="min-w-0 flex-1 p-5">{children}</main>
+              <div className="relative hidden lg:block">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  aria-label="Busca global"
+                  placeholder="Buscar loja, funcionário ou indicador..."
+                  className="h-10 w-72 pl-9"
+                />
+              </div>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" aria-label="Notificações" className="relative">
+                    <Bell className="size-[18px]" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72">
+                  <DropdownMenuLabel>Notificações</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem disabled>Nenhuma notificação no momento</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="size-9 rounded-full bg-secondary p-0 text-xs font-semibold text-secondary-foreground"
+                    aria-label="Perfil do usuário"
+                  >
+                    {initials(access?.fullName ?? access?.email)}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="truncate">
+                    {access?.fullName ?? access?.email ?? "Usuário"}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <User className="size-4" /> Perfil
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Settings2 className="size-4" /> Configurações
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <CircleHelp className="size-4" /> Ajuda
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={signOut}>
+                    <LogOut className="size-4" /> Sair
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-semibold tracking-tight">{title}</h1>
+                {description && (
+                  <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">{actions}</div>
+            </div>
+          </header>
+
+          <main className="min-w-0 flex-1 p-4 md:p-6">{children}</main>
+        </SidebarInset>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
+
+/** Alias mantido para compatibilidade com as páginas existentes. */
+export const AppShell = PlatformShell;
