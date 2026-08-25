@@ -1,46 +1,52 @@
-# Acessos de gerentes, observações por mês e importação de metas
+# Correção do motor de bônus — separar "Cancelados iFood" e "Pedidos com Chamado"
 
-## 1. Acessos por loja (só você cria)
+## Situação atual (verificada no banco)
 
-Nova aba **Usuários** dentro de Cadastros (visível apenas para Master):
+Hoje existe **um único indicador** `Cancelamentos/Chamados` na versão publicada 1º Trimestre/2026:
 
-- Formulário: nome, e-mail, senha inicial, loja(s) vinculada(s).
-- A conta é criada já confirmada, com perfil **Gerente**, e aparece na lista com loja, último acesso e ações: redefinir senha, trocar loja, desativar.
-- O gerente entra e vê apenas a loja dele: lançamento dos indicadores dos funcionários, metas realizadas e observações.
-- Critérios, pesos, valores e versões de regras continuam **somente leitura** para o gerente — criar/editar/publicar segue exclusivo do Master (as regras de acesso do banco já bloqueiam isso; a tela deixará isso explícito, sem botões de edição).
+| Cargo (base) | Valor atual do indicador único | Peso |
+|---|---|---|
+| Gerentes (R$ 600) | R$ 60,00 | 10% |
+| Gerente Trainee (R$ 500) | R$ 50,00 | 10% |
+| Operadores / Instrutor (R$ 400) | R$ 40,00 | 10% |
 
-## 2. Observações da loja por mês
+Não há nenhum período aprovado/fechado nem resultado lançado, então a correção pode ser aplicada na própria versão publicada sem afetar histórico.
 
-Campo de observações da loja em cada período (mês):
+## O que será feito
 
-- O gerente escreve o esclarecimento no fechamento do mês; fica gravado junto ao período.
-- Você vê a observação na tela de Períodos (conferência) e ela entra na exportação do fechamento.
-- Depois que o período é aprovado/fechado, a observação fica travada como histórico.
+Substituir o indicador único por **dois indicadores independentes**, em todos os cargos:
 
-## 3. Importação da planilha e geração automática de metas
+1. **Cancelados iFood** (código `CANC_IFOOD`)
+2. **Pedidos com Chamado** (código `CHAMADO`)
 
-Novo bloco **Importar faturamento** (Master):
+Valores conforme você definiu:
 
-- Você envia o Excel do ano passado; a tela lê as colunas e você confirma o mapeamento (loja, mês, faturamento sem taxa, taxa de serviço, taxa de entrega, TC).
-- Cálculos aplicados por loja/mês:
-  - **FAT líquido realizado** = faturamento sem taxa + taxa de serviço
-  - **TC realizado** = total de clientes atendidos
-  - **TM realizado** = FAT líquido ÷ TC
-  - **Meta FAT** = FAT líquido do ano anterior × 1,10
-  - **Meta TC** = TC do ano anterior × 1,10
-  - **Meta TM** = Meta FAT ÷ Meta TC
-- A taxa de entrega é guardada separada (não entra no FAT líquido), para você distinguir receita de serviço de taxa de entrega.
-- Antes de gravar, uma **prévia** mostra loja por loja: realizado ano anterior × meta gerada, com aviso de linhas sem loja correspondente ou valores inválidos.
-- Depois de importar, as metas de FAT/TC/TM já aparecem preenchidas em cada período mensal de cada loja (mês atual e meses seguintes), com possibilidade de você ajustar manualmente a meta de um mês específico — o ajuste manual prevalece.
-- O percentual de 10% fica configurável na tela, caso queira usar outro valor num ano futuro.
-- TC e TM são **informativos de meta** (realizado vs. meta), não critérios de bônus; o gatilho de bônus continua o de faturamento.
+| Cargo | Cancelados iFood | Pedidos com Chamado |
+|---|---|---|
+| Gerentes (todos os níveis: Jr, Pleno II, Pleno III, Sênior, PJ, Gerente) | R$ 30,00 (5%) | R$ 30,00 (5%) |
+| Gerente Trainee | R$ 25,00 (5%) | R$ 25,00 (5%) |
+| Operador, Operador I, Operador II, Instrutor III | R$ 20,00 (5%) | R$ 20,00 (5%) |
+
+Cada um passa a ter **meta e lançamento próprios**: o gerente marca "atingiu / não atingiu" separadamente, e o pagamento de um não depende do outro. Se o Gerente atinge Cancelados iFood e não atinge Pedidos com Chamado, recebe R$ 30 + R$ 0; atingindo os dois, R$ 60.
+
+## Validações que o sistema vai conferir
+
+Na tela do Motor de Regras, cada cargo mostra um painel de conferência com bloqueio/alerta antes de publicar:
+
+- Soma dos valores dos indicadores = valor máximo do cargo (Gerente R$ 600, Trainee R$ 500, Operador R$ 400).
+- Soma dos pesos = 100%.
+- Teto por cargo: o cálculo nunca paga acima do valor máximo (já existe no motor, ficará visível como aviso).
+- Todo indicador com regra de atingimento própria — aviso se algum ficar sem meta definida.
+
+Ponto a corrigir de tabela: nos cargos de gerência os pesos hoje somam **99,99%** (três indicadores de 13,33%). Com a divisão, ajusto para fechar exatamente 100% (13,34 / 13,33 / 13,33), mantendo os valores em R$ intactos.
+
+## Revisão dos demais critérios
+
+Depois de aplicar essa correção, monto uma tela/relatório de conferência por cargo (indicador, meta, peso, valor, eliminatório) para você comparar com o combinado com os gerentes e me apontar os próximos ajustes.
 
 ## Detalhes técnicos
 
-- Banco:
-  - Nova tabela `store_history_monthly` (loja, ano, mês, faturamento sem taxa, taxa de serviço, taxa de entrega, faturamento líquido, TC, TM, origem da importação) com RLS: leitura para quem tem acesso à loja, escrita só Master.
-  - `store_targets` ganha `tc_target`, `tc_actual`, `tm_target`, `tm_actual`, `tc_history`, e `manager_note` (observação do gerente no mês).
-  - Grants + políticas na mesma migração; auditoria registra importações e edições de meta.
-- Criação de usuário: server function com middleware de auth + verificação `is_master()`, usando o cliente administrativo carregado dentro do handler (Auth Admin API + `profiles`, `user_roles`, `user_stores`).
-- Importação: leitura do Excel no navegador com a lib `xlsx` já instalada; a gravação vai por server function em lote, com validação Zod e geração/atualização dos períodos e metas.
-- Telas: nova aba em `cadastros.tsx` (Usuários + Importar faturamento), campos de TC/TM e observação em `lancamento.tsx`, exibição da observação e das metas TC/TM em `periodos.tsx` e no painel.
+- Migração de dados na versão publicada: renomear a linha `CANC` para `Cancelados iFood` (`CANC_IFOOD`, valor/peso ajustados) e inserir a linha nova `CHAMADO` para cada `position_id`, mantendo `sort_order` sequencial e as metas textuais (`< 1%` cancelados, `< 5%` chamados) editáveis.
+- Correção dos pesos de 13,33 → 13,34 no primeiro indicador dos cargos de gerência.
+- Registro em `audit_logs` da alteração de critérios.
+- `bonus-engine.ts` já trata cada critério de forma independente (valor por linha, sem agrupamento) — nenhuma mudança de lógica é necessária; apenas os alertas de soma de pesos/valores ganham destaque na UI de regras.
