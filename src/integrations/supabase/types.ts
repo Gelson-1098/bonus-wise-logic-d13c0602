@@ -1105,6 +1105,8 @@ export type Database = {
     }
     Functions: {
       can_access_store: { Args: { _store_id: string }; Returns: boolean }
+      get_security_setting: { Args: { _key: string }; Returns: string }
+      get_security_setting_meta: { Args: { _key: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1113,6 +1115,10 @@ export type Database = {
         Returns: boolean
       }
       is_master: { Args: never; Returns: boolean }
+      set_security_setting: {
+        Args: { _by: string; _key: string; _value: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "master" | "gerente" | "treinador"
