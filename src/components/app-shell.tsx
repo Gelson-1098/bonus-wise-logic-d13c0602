@@ -18,11 +18,13 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { to: "/painel", label: "Painel", icon: LayoutDashboard, master: false },
   { to: "/lancamento", label: "Lançamento", icon: ClipboardList, master: false },
+  { to: "/metas", label: "Metas", icon: Target, master: false },
   { to: "/periodos", label: "Períodos", icon: CalendarRange, master: false },
   { to: "/regras", label: "Motor de regras", icon: SlidersHorizontal, master: true },
   { to: "/cadastros", label: "Cadastros", icon: Building2, master: true },
   { to: "/auditoria", label: "Auditoria", icon: History, master: true },
 ] as const;
+
 
 export function AppShell({
   title,
