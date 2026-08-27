@@ -27,10 +27,11 @@ export const saveEntryCalculation = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
+    // O acesso é validado pelas regras de acesso do banco (RLS) com o cliente do usuário.
     const { data: entry, error: entryErr } = await supabase
       .from("employee_period_entries")
       .select(
-        "id, period_id, employee_id, store_id, position_id, positions(base_value,name), employees(full_name), bonus_periods(id,status,month,year,version_id,store_id)",
+        "id, period_id, employee_id, store_id, position_id, employees(full_name), bonus_periods(id,status,month,year,version_id,store_id)",
       )
       .eq("id", data.entry_id)
       .maybeSingle();
@@ -47,10 +48,21 @@ export const saveEntryCalculation = createServerFn({ method: "POST" })
     if (!EDITABLE.includes(period.status))
       throw new Error("Período fechado ou aprovado — não é possível alterar o lançamento.");
 
-    const version = await resolveVersion(supabase, period.version_id, period.year, period.month);
+    // Regras de bônus e valores-base são confidenciais: lidos no servidor após validar o acesso.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const version = await resolveVersion(supabaseAdmin, period.version_id, period.year, period.month);
     if (!version) throw new Error("Nenhuma versão de regras publicada para este período.");
 
-    const { data: criteriaRows } = await supabase
+    const { data: positionRow } = entry.position_id
+      ? await supabaseAdmin
+          .from("positions")
+          .select("base_value")
+          .eq("id", entry.position_id)
+          .maybeSingle()
+      : { data: null };
+
+    const { data: criteriaRows } = await supabaseAdmin
       .from("bonus_criteria")
       .select(
         "id, code, name, category, weight_pct, value_brl, is_eliminatory, eliminatory_action, target_text, active",
