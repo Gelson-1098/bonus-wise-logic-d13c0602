@@ -23,13 +23,13 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/periodos")({
   head: () => ({
     meta: [
-      { title: "Períodos e conferência | VÉRTICE" },
+      { title: "Períodos e conferência | PRISMA" },
       {
         name: "description",
         content:
           "Confira, aprove, feche e exporte os períodos de bonificação de cada loja com histórico imutável.",
       },
-      { property: "og:title", content: "Períodos e conferência | VÉRTICE" },
+      { property: "og:title", content: "Períodos e conferência | PRISMA" },
       { property: "og:description", content: "Confira, aprove, feche e exporte os períodos de bonificação de cada loja com histórico imutável." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

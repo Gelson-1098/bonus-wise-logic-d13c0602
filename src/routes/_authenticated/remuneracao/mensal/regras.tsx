@@ -20,13 +20,13 @@ import { brl } from "@/lib/format";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/regras")({
   head: () => ({
     meta: [
-      { title: "Motor de regras | VÉRTICE" },
+      { title: "Motor de regras | PRISMA" },
       {
         name: "description",
         content:
           "Configure versões trimestrais, gatilhos, pesos e valores dos indicadores de bônus por cargo, sem alterar históricos.",
       },
-      { property: "og:title", content: "Motor de regras | VÉRTICE" },
+      { property: "og:title", content: "Motor de regras | PRISMA" },
       { property: "og:description", content: "Configure versões trimestrais, gatilhos, pesos e valores dos indicadores de bônus por cargo, sem alterar históricos." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

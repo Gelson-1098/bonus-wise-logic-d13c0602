@@ -41,13 +41,13 @@ import { brl, MONTHS, periodLabel } from "@/lib/format";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/metas")({
   head: () => ({
     meta: [
-      { title: "Metas de faturamento e TC | VÉRTICE" },
+      { title: "Metas de faturamento e TC | PRISMA" },
       {
         name: "description",
         content:
           "Importe o faturamento do ano anterior, gere automaticamente as metas de faturamento e de clientes atendidos e acompanhe a meta de cada loja.",
       },
-      { property: "og:title", content: "Metas de faturamento e TC | VÉRTICE" },
+      { property: "og:title", content: "Metas de faturamento e TC | PRISMA" },
       {
         property: "og:description",
         content: "Importe o faturamento do ano anterior, gere automaticamente as metas de faturamento e de clientes atendidos e acompanhe a meta de cada loja.",

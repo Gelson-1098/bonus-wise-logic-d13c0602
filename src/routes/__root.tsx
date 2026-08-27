@@ -78,10 +78,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "VÉRTICE — Gestão & Performance" },
+      { title: "PRISMA — Inteligência para gestão e performance" },
       { name: "description", content: "Plataforma corporativa de gestão e performance: operação, indicadores, remuneração, metas e auditoria em um só lugar." },
       { name: "author", content: "DEX Invest" },
-      { property: "og:title", content: "VÉRTICE — Gestão & Performance" },
+      { property: "og:title", content: "PRISMA — Inteligência para gestão e performance" },
       { property: "og:description", content: "Plataforma corporativa de gestão e performance: operação, indicadores, remuneração, metas e auditoria em um só lugar." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

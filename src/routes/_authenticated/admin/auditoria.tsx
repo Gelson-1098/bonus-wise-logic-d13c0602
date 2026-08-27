@@ -8,12 +8,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export const Route = createFileRoute("/_authenticated/admin/auditoria")({
   head: () => ({
     meta: [
-      { title: "Auditoria | VÉRTICE" },
+      { title: "Auditoria | PRISMA" },
       {
         name: "description",
         content: "Histórico completo de cálculos, aprovações, reaberturas e justificativas do bônus.",
       },
-      { property: "og:title", content: "Auditoria | VÉRTICE" },
+      { property: "og:title", content: "Auditoria | PRISMA" },
       { property: "og:description", content: "Histórico completo de cálculos, aprovações, reaberturas e justificativas do bônus." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

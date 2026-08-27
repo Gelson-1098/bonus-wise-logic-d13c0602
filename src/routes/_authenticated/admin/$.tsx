@@ -9,10 +9,10 @@ export const Route = createFileRoute("/_authenticated/admin/$")({
   },
   head: () => ({
     meta: [
-      { title: "Administração | VÉRTICE" },
-      { name: "description", content: "Administração da plataforma VÉRTICE: usuários, permissões, configurações e auditoria do sistema." },
-      { property: "og:title", content: "Administração | VÉRTICE" },
-      { property: "og:description", content: "Administração da plataforma VÉRTICE: usuários, permissões, configurações e auditoria do sistema." },
+      { title: "Administração | PRISMA" },
+      { name: "description", content: "Administração da plataforma PRISMA: usuários, permissões, configurações e auditoria do sistema." },
+      { property: "og:title", content: "Administração | PRISMA" },
+      { property: "og:description", content: "Administração da plataforma PRISMA: usuários, permissões, configurações e auditoria do sistema." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

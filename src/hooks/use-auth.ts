@@ -78,7 +78,7 @@ export function useAuthorizationGate() {
   useEffect(() => {
     if (!isSuccess || !access || access.authorized) return;
     const message = !access.role
-      ? "Este e-mail não possui acesso autorizado ao VÉRTICE."
+      ? "Este e-mail não possui acesso autorizado ao PRISMA."
       : "Seu acesso está desativado. Procure o administrador.";
     void supabase.auth.signOut().then(() => {
       window.location.assign(`/auth?motivo=${encodeURIComponent(message)}`);

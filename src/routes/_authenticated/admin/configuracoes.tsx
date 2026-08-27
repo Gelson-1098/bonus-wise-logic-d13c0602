@@ -20,17 +20,17 @@ export const Route = createFileRoute("/_authenticated/admin/configuracoes")({
   },
   head: () => ({
     meta: [
-      { title: "Configurações | VÉRTICE" },
+      { title: "Configurações | PRISMA" },
       {
         name: "description",
         content:
-          "Configurações administrativas da VÉRTICE: segurança da plataforma e senha padrão utilizada nos novos acessos.",
+          "Configurações administrativas da PRISMA: segurança da plataforma e senha padrão utilizada nos novos acessos.",
       },
-      { property: "og:title", content: "Configurações | VÉRTICE" },
+      { property: "og:title", content: "Configurações | PRISMA" },
       {
         property: "og:description",
         content:
-          "Configurações administrativas da VÉRTICE: segurança da plataforma e senha padrão utilizada nos novos acessos.",
+          "Configurações administrativas da PRISMA: segurança da plataforma e senha padrão utilizada nos novos acessos.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

@@ -35,13 +35,13 @@ import type { CriterionStatus } from "@/lib/bonus-engine";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/lancamentos")({
   head: () => ({
     meta: [
-      { title: "Lançamento de resultados | VÉRTICE" },
+      { title: "Lançamento de resultados | PRISMA" },
       {
         name: "description",
         content:
           "Lance metas, faturamento e indicadores de cada colaborador para o cálculo automático do bônus mensal.",
       },
-      { property: "og:title", content: "Lançamento de resultados | VÉRTICE" },
+      { property: "og:title", content: "Lançamento de resultados | PRISMA" },
       { property: "og:description", content: "Lance metas, faturamento e indicadores de cada colaborador para o cálculo automático do bônus mensal." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

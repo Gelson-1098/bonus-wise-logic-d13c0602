@@ -73,7 +73,7 @@ export function AppSidebar() {
           VÉR<span className="text-sidebar-primary">TICE</span>
         </p>
         {!collapsed && (
-          <p className="mt-0.5 truncate text-xs text-sidebar-foreground/60">Gestão &amp; Performance</p>
+          <p className="mt-0.5 truncate text-xs text-sidebar-foreground/60">Inteligência para gestão e performance</p>
         )}
       </SidebarHeader>
 

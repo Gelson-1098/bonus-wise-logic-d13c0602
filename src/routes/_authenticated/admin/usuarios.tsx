@@ -77,17 +77,17 @@ export const Route = createFileRoute("/_authenticated/admin/usuarios")({
   },
   head: () => ({
     meta: [
-      { title: "Usuários | VÉRTICE" },
+      { title: "Usuários | PRISMA" },
       {
         name: "description",
         content:
-          "Central de acessos da VÉRTICE: crie usuários, defina papéis, vincule lojas e redefina senhas com auditoria completa.",
+          "Central de acessos da PRISMA: crie usuários, defina papéis, vincule lojas e redefina senhas com auditoria completa.",
       },
-      { property: "og:title", content: "Usuários | VÉRTICE" },
+      { property: "og:title", content: "Usuários | PRISMA" },
       {
         property: "og:description",
         content:
-          "Central de acessos da VÉRTICE: crie usuários, defina papéis, vincule lojas e redefina senhas com auditoria completa.",
+          "Central de acessos da PRISMA: crie usuários, defina papéis, vincule lojas e redefina senhas com auditoria completa.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

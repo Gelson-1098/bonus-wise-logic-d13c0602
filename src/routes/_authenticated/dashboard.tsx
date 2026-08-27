@@ -14,16 +14,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "Dashboard | VÉRTICE" },
+      { title: "Dashboard | PRISMA" },
       {
         name: "description",
         content:
-          "Visão geral da VÉRTICE: lojas ativas, colaboradores, períodos de remuneração em andamento e acesso aos universos de gestão.",
+          "Visão geral da PRISMA: lojas ativas, colaboradores, períodos de remuneração em andamento e acesso aos universos de gestão.",
       },
-      { property: "og:title", content: "Dashboard | VÉRTICE" },
+      { property: "og:title", content: "Dashboard | PRISMA" },
       {
         property: "og:description",
-        content: "Visão geral da VÉRTICE: lojas ativas, colaboradores, períodos de remuneração em andamento e acesso aos universos de gestão.",
+        content: "Visão geral da PRISMA: lojas ativas, colaboradores, períodos de remuneração em andamento e acesso aos universos de gestão.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -65,8 +65,8 @@ function DashboardPage() {
 
   return (
     <AppShell
-      title="VÉRTICE"
-      description="Gestão & Performance — visão geral dos universos"
+      title="PRISMA"
+      description="Inteligência para gestão e performance"
       actions={
         <Button asChild>
           <Link to="/remuneracao/mensal/lancamentos">

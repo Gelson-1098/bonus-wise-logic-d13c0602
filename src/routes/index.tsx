@@ -7,13 +7,13 @@ import { useSession } from "@/hooks/use-auth";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "VÉRTICE — Gestão & Performance" },
+      { title: "PRISMA — Inteligência para gestão e performance" },
       {
         name: "description",
         content:
           "Plataforma corporativa de gestão e performance: operação, indicadores, remuneração, metas e auditoria em um só lugar.",
       },
-      { property: "og:title", content: "VÉRTICE — Gestão & Performance" },
+      { property: "og:title", content: "PRISMA — Inteligência para gestão e performance" },
       {
         property: "og:description",
         content: "Plataforma corporativa de gestão e performance: operação, indicadores, remuneração, metas e auditoria em um só lugar.",
@@ -39,9 +39,9 @@ function Home() {
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.18em] text-primary">DEX Invest</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-            VÉRTICE
+            PRISMA
           </h1>
-          <p className="mt-2 text-sm font-medium text-muted-foreground">Gestão &amp; Performance</p>
+          <p className="mt-2 text-sm font-medium text-muted-foreground">Inteligência para gestão e performance</p>
           <p className="mt-4 max-w-xl text-base text-muted-foreground">
             Substitua as planilhas de bonificação por um processo único: metas por loja, gatilho de faturamento,
             indicadores por cargo, conferência do Master e exportação para o financeiro.
