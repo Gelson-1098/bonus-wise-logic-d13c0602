@@ -108,8 +108,11 @@ function DashboardPage() {
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Universos disponíveis</CardTitle>
+          <CardHeader className="gap-1">
+            <CardTitle className="text-sm font-medium">Visão Executiva</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Visão consolidada dos principais indicadores e resultados.
+            </p>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {universes.map((universe) => {
