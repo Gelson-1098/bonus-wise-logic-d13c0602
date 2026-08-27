@@ -87,7 +87,7 @@ export const saveEntryCalculation = createServerFn({ method: "POST" })
 
     const criteria = (criteriaRows ?? []) as unknown as EngineCriterion[];
     const results = data.results as EngineResult[];
-    const base = (entry.positions as unknown as { base_value: number | null } | null)?.base_value ?? null;
+    const base = (positionRow as { base_value: number | null } | null)?.base_value ?? null;
     const metaValue = target?.target_adjusted ?? goal?.meta_faturamento ?? target?.target_calculated ?? null;
 
 
