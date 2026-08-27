@@ -104,6 +104,9 @@ function PainelPage() {
   );
   const globalAttainment = totals.target > 0 ? (totals.revenue / totals.target) * 100 : null;
 
+  const eligibleCount = rows.filter((r) => r.attainment !== null && r.attainment >= 90).length;
+  const ineligibleCount = rows.filter((r) => r.attainment !== null && r.attainment < 90).length;
+
   return (
     <AppShell
       title="Painel executivo"
@@ -111,18 +114,22 @@ function PainelPage() {
       actions={<PeriodPicker month={period.month} year={period.year} onChange={setPeriod} />}
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi label="Faturamento realizado" value={brl(totals.revenue)} hint={`Meta ${brl(totals.target)}`} />
+        <Kpi label="Faturamento realizado" value={brl(totals.revenue)} hint={`Meta total ${brl(totals.target)}`} />
+        <Kpi
+          label="Lojas Elegíveis (≥ 90%)"
+          value={`${eligibleCount} de ${rows.length}`}
+          hint={
+            ineligibleCount > 0
+              ? `${ineligibleCount} loja(s) inelegível(is) (< 90%)`
+              : "Todas as lojas apuradas atingiram o gatilho"
+          }
+        />
         <Kpi
           label="Atingimento consolidado"
           value={pct(globalAttainment)}
-          hint={globalAttainment === null ? "Metas não lançadas" : globalAttainment >= 90 ? "Acima do gatilho" : "Abaixo do gatilho"}
+          hint={globalAttainment === null ? "Metas não lançadas" : globalAttainment >= 90 ? "Acima do gatilho (Elegível)" : "Abaixo do gatilho (Inelegível)"}
         />
-        <Kpi label="Bônus do período" value={brl(totals.bonus)} hint={`${rows.length} loja(s)`} />
-        <Kpi
-          label="Elegíveis a receber"
-          value={`${totals.paying}/${totals.employees}`}
-          hint="Colaboradores com valor calculado"
-        />
+        <Kpi label="Bônus do período" value={brl(totals.bonus)} hint={`${totals.paying} colaboradores a receber`} />
       </div>
 
       <Card className="mt-5">
@@ -148,7 +155,7 @@ function PainelPage() {
 
       <Card className="mt-5">
         <CardHeader>
-          <CardTitle className="text-base">Detalhamento por loja</CardTitle>
+          <CardTitle className="text-base">Detalhamento por loja e elegibilidade</CardTitle>
         </CardHeader>
         <CardContent className="px-0">
           <div className="overflow-x-auto">
@@ -160,6 +167,7 @@ function PainelPage() {
                   <TableHead className="text-right">Meta</TableHead>
                   <TableHead className="text-right">Realizado</TableHead>
                   <TableHead className="text-right">Atingimento</TableHead>
+                  <TableHead className="text-center">Elegibilidade Bônus</TableHead>
                   <TableHead className="text-right">Colaboradores</TableHead>
                   <TableHead className="text-right">Bônus</TableHead>
                 </TableRow>
@@ -167,43 +175,59 @@ function PainelPage() {
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-muted-foreground">
+                    <TableCell colSpan={8} className="text-muted-foreground">
                       Carregando…
                     </TableCell>
                   </TableRow>
                 )}
                 {!isLoading && rows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-muted-foreground">
+                    <TableCell colSpan={8} className="text-muted-foreground">
                       Abra o período em “Lançamento” para começar.
                     </TableCell>
                   </TableRow>
                 )}
-                {rows.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-medium">{r.store}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={cn(statusTone(r.status))}>
-                        {PERIOD_STATUS_LABEL[r.status] ?? r.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">{r.target === null ? "—" : brl(r.target)}</TableCell>
-                    <TableCell className="text-right">{r.revenue === null ? "—" : brl(r.revenue)}</TableCell>
-                    <TableCell
-                      className={cn(
-                        "text-right font-medium",
-                        r.attainment !== null && r.attainment < 90 && "text-destructive",
-                        r.attainment !== null && r.attainment >= 100 && "text-success",
-                      )}
-                    >
-                      {pct(r.attainment)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {r.paying}/{r.employees}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">{brl(r.total)}</TableCell>
-                  </TableRow>
-                ))}
+                {rows.map((r) => {
+                  const isEligible = r.attainment !== null ? r.attainment >= 90 : null;
+                  return (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-medium">{r.store}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={cn(statusTone(r.status))}>
+                          {PERIOD_STATUS_LABEL[r.status] ?? r.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">{r.target === null ? "—" : brl(r.target)}</TableCell>
+                      <TableCell className="text-right">{r.revenue === null ? "—" : brl(r.revenue)}</TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-right font-bold",
+                          r.attainment !== null && r.attainment < 90 && "text-destructive",
+                          r.attainment !== null && r.attainment >= 90 && "text-emerald-600 dark:text-emerald-400",
+                        )}
+                      >
+                        {pct(r.attainment)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {isEligible === true && (
+                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px]">
+                            ELEGÍVEL
+                          </Badge>
+                        )}
+                        {isEligible === false && (
+                          <Badge variant="destructive" className="font-bold text-[11px]">
+                            INELEGÍVEL
+                          </Badge>
+                        )}
+                        {isEligible === null && <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {r.paying}/{r.employees}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">{brl(r.total)}</TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

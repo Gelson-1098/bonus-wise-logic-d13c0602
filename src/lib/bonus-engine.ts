@@ -220,3 +220,47 @@ export const ELIGIBILITY_LABEL: Record<EngineOutput["eligibility"], string> = {
   superada: "Meta superada",
   indefinido: "Sem meta/realizado",
 };
+
+export type StoreEligibility = {
+  isEligible: boolean;
+  status: "ELEGÍVEL" | "INELEGÍVEL" | "INDEFINIDO";
+  attainment: number | null;
+  minTriggerPct: number;
+  message: string;
+};
+
+export function checkStoreEligibility(
+  revenueActual: number | null | undefined,
+  metaRevenue: number | null | undefined,
+  minTriggerPct: number = 90,
+): StoreEligibility {
+  if (
+    metaRevenue === null ||
+    metaRevenue === undefined ||
+    Number(metaRevenue) <= 0 ||
+    revenueActual === null ||
+    revenueActual === undefined
+  ) {
+    return {
+      isEligible: false,
+      status: "INDEFINIDO",
+      attainment: null,
+      minTriggerPct,
+      message: "Meta ou faturamento realizado não informados.",
+    };
+  }
+
+  const attainment = (Number(revenueActual) / Number(metaRevenue)) * 100;
+  const isEligible = attainment >= minTriggerPct;
+
+  return {
+    isEligible,
+    status: isEligible ? "ELEGÍVEL" : "INELEGÍVEL",
+    attainment,
+    minTriggerPct,
+    message: isEligible
+      ? `A loja atingiu ${attainment.toFixed(2)}% da meta (gatilho mínimo: ${minTriggerPct}%) e está ELEGÍVEL ao bônus integral.`
+      : `A loja atingiu ${attainment.toFixed(2)}% da meta, ficando abaixo do gatilho mínimo de ${minTriggerPct}%. A loja está INELEGÍVEL ao bônus.`,
+  };
+}
+

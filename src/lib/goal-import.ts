@@ -80,17 +80,36 @@ export function guessColumn(headers: string[], candidates: string[]) {
 }
 
 export const COLUMN_HINTS: Record<keyof ColumnMap, string[]> = {
-  store: ["loja", "unidade", "filial", "restaurante", "store"],
-  month: ["mes", "mês", "periodo", "competencia", "data"],
+  store: ["loja", "coluna d", "d", "unidade", "filial", "restaurante", "store"],
+  month: ["mes", "mês", "coluna f", "f", "periodo", "competencia", "data"],
   receita: [
-    "faturamento liquido sem taxa",
+    "faturamento",
+    "coluna h",
+    "h",
+    "faturamento/vendas",
+    "faturamento de vendas",
     "receita de vendas",
     "receita vendas",
+    "vendas",
+    "faturamento liquido sem taxa",
     "faturamento liquido",
     "receita",
   ],
   taxa: ["taxa de servico", "taxa servico", "taxa de serviço", "taxa"],
-  tc: ["tc", "total de clientes", "clientes atendidos", "clientes", "cupons"],
+  tc: [
+    "tc — quantidade de clientes/pedidos atendidos",
+    "tc - quantidade de clientes/pedidos atendidos",
+    "quantidade de clientes/pedidos atendidos",
+    "clientes/pedidos atendidos",
+    "coluna l",
+    "l",
+    "tc",
+    "total de clientes",
+    "clientes atendidos",
+    "clientes",
+    "pedidos",
+    "cupons",
+  ],
 };
 
 export function matchStore(

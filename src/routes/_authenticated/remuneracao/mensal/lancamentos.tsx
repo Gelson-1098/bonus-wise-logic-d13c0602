@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { AlertTriangle, Calculator, Send } from "lucide-react";
+import { AlertTriangle, Calculator, CheckCircle2, Send, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { openPeriod, saveEntryCalculation, transitionPeriod } from "@/lib/bonus.functions";
 import { getEntryRules, getPeriodVersion, listPositionsBasic } from "@/lib/rules.functions";
@@ -425,27 +425,103 @@ function TargetCard({
     </div>
   );
 
+  const isEligible = attainment !== null ? attainment >= minTrigger : null;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Meta da loja e realizado</CardTitle>
+    <Card className="border-2">
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base">Meta da loja, realizado e elegibilidade</CardTitle>
+          {isEligible !== null && (
+            <Badge
+              variant={isEligible ? "default" : "destructive"}
+              className={cn(
+                "px-3 py-1 text-xs font-bold uppercase tracking-wider",
+                isEligible ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-destructive text-destructive-foreground",
+              )}
+            >
+              {isEligible ? "ELEGÍVEL" : "INELEGÍVEL"}
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Banner de Elegibilidade em Destaque */}
+        {isEligible === true && (
+          <Alert className="border-emerald-500/50 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-200">
+            <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400" />
+            <div className="space-y-1">
+              <AlertTitle className="text-base font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
+                <span>LOJA ELEGÍVEL AO BÔNUS</span>
+                <Badge className="bg-emerald-600 text-white border-none">ELEGÍVEL</Badge>
+              </AlertTitle>
+              <AlertDescription className="text-sm text-emerald-800 dark:text-emerald-300">
+                A loja atingiu <strong>{attainment?.toFixed(2)}%</strong> da meta de faturamento (gatilho mínimo necessário: <strong>{minTrigger}%</strong>). A unidade está <strong>100% elegível ao valor integral do bônus</strong> para os colaboradores que atingirem os critérios individuais.
+              </AlertDescription>
+            </div>
+          </Alert>
+        )}
+
+        {isEligible === false && (
+          <Alert variant="destructive" className="border-destructive/60 bg-destructive/10">
+            <XCircle className="size-5 text-destructive" />
+            <div className="space-y-1">
+              <AlertTitle className="text-base font-bold flex items-center gap-2">
+                <span>LOJA INELEGÍVEL AO BÔNUS</span>
+                <Badge variant="destructive" className="border-none font-bold">INELEGÍVEL</Badge>
+              </AlertTitle>
+              <AlertDescription className="text-sm">
+                A loja atingiu <strong>{attainment?.toFixed(2)}%</strong> da meta de faturamento, ficando abaixo do gatilho mínimo de <strong>{minTrigger}%</strong> (faltaram <strong>{(minTrigger - (attainment ?? 0)).toFixed(2)}%</strong>). Portanto, a loja está <strong>INELEGÍVEL</strong> ao bônus neste período (valor = R$ 0,00).
+              </AlertDescription>
+            </div>
+          </Alert>
+        )}
+
+        {isEligible === null && (
+          <Alert className="bg-muted/50 border-muted">
+            <AlertTriangle className="size-4 text-muted-foreground" />
+            <AlertDescription className="text-xs text-muted-foreground">
+              Preencha o faturamento realizado da loja abaixo para calcular o percentual de atingimento e apurar a elegibilidade ao bônus (gatilho: {minTrigger}%).
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-1.5">
-            <Label>Meta de faturamento</Label>
-            <p className="text-lg font-semibold">{goalMeta === null ? "—" : brl(goalMeta)}</p>
-            <p className="text-xs text-muted-foreground">Definida pelo administrador</p>
+          <div className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
+            <Label className="text-xs text-muted-foreground">Meta de faturamento</Label>
+            <p className="text-lg font-bold">{goalMeta === null ? "—" : brl(goalMeta)}</p>
+            <p className="text-[11px] text-muted-foreground">Ano anterior + 10%</p>
           </div>
-          <div className="space-y-1.5">
-            <Label>Meta de TC</Label>
-            <p className="text-lg font-semibold">
+          <div className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
+            <Label className="text-xs text-muted-foreground">Meta de TC (Clientes)</Label>
+            <p className="text-lg font-bold">
               {goalTc === null ? "—" : Number(goalTc).toLocaleString("pt-BR")}
             </p>
-            <p className="text-xs text-muted-foreground">Total de clientes atendidos</p>
+            <p className="text-[11px] text-muted-foreground">Ano anterior + 10%</p>
           </div>
           {field("revenue_actual", "Faturamento realizado (R$)")}
-          {field("tc_actual", "TC realizado")}
+          {field("tc_actual", "TC realizado (Clientes)")}
+        </div>
+
+        {/* Indicadores de Atingimento */}
+        <div className="grid gap-3 sm:grid-cols-2 rounded-lg border bg-card p-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Atingimento Faturamento:</span>
+            <span
+              className={cn(
+                "font-bold",
+                attainment !== null && attainment < minTrigger ? "text-destructive" : "text-emerald-600 dark:text-emerald-400",
+              )}
+            >
+              {pct(attainment)} {attainment !== null ? (attainment >= minTrigger ? "(≥ 90% Gatilho OK)" : "(< 90% Abaixo)") : ""}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Atingimento TC:</span>
+            <span className="font-bold text-foreground">
+              {tcPct === null ? "—" : `${tcPct.toFixed(1)}%`} {tcPct !== null ? (tcPct >= minTrigger ? "(≥ 90% OK)" : "") : ""}
+            </span>
+          </div>
         </div>
 
         {isMaster && (
@@ -458,7 +534,7 @@ function TargetCard({
           <Label htmlFor="manager_note">Observações da loja</Label>
           <Textarea
             id="manager_note"
-            rows={3}
+            rows={2}
             disabled={!editable}
             placeholder="Registre esclarecimentos sobre o período (obras, feriados, falta de equipe...)"
             value={noteText}
@@ -466,21 +542,13 @@ function TargetCard({
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <span
-            className={cn(
-              "text-sm font-medium",
-              attainment !== null && attainment < minTrigger ? "text-destructive" : "text-success",
-            )}
-          >
-            Atingimento do faturamento: {pct(attainment)} (gatilho {minTrigger}%)
-          </span>
-          <span className="text-sm text-muted-foreground">
-            TC: {tcPct === null ? "—" : `${tcPct.toFixed(1)}%`} da meta
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <div className="text-xs text-muted-foreground">
+            * Atingindo <strong>{minTrigger}% ou mais</strong>, a loja torna-se elegível ao <strong>valor cheio do bônus</strong> (sem redução proporcional).
+          </div>
           {editable && (
-            <Button size="sm" className="ml-auto" onClick={() => save.mutate()} disabled={save.isPending}>
-              Salvar
+            <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+              Salvar Realizado
             </Button>
           )}
         </div>

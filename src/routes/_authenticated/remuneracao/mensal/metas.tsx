@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowRight, CheckCircle2, FileSpreadsheet, RefreshCw, Upload } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, FileSpreadsheet, RefreshCw, Upload, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { generateGoals, getGoalGrowth, importRevenueHistory, saveGoalGrowth } from "@/lib/goals.functions";
 import {
@@ -624,11 +624,11 @@ function ImportWizard() {
           <CardContent className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             {(
               [
-                ["store", "Coluna da loja"],
-                ["month", "Coluna do mês"],
-                ["receita", "Faturamento líquido sem taxa"],
-                ["taxa", "Taxa de serviço"],
-                ["tc", "Total de clientes (TC)"],
+                ["store", "Loja (Coluna D)"],
+                ["month", "Mês (Coluna F)"],
+                ["receita", "FATURAMENTO (Coluna H)"],
+                ["taxa", "Taxa de serviço (opcional)"],
+                ["tc", "TC — Clientes/Pedidos (Coluna L)"],
               ] as Array<[keyof ColumnMap, string]>
             ).map(([key, label]) => (
               <div key={key} className="space-y-1.5">
@@ -840,6 +840,18 @@ function ManagerMetas() {
 
   const nowYear = now.getFullYear();
 
+  // Encontra o registro do mês atual ou mais recente para destacar no banner
+  const currentMonthGoal = useMemo(() => {
+    const list = goals.data ?? [];
+    return list.find((g) => g.month === now.getMonth() + 1) || list[list.length - 1] || null;
+  }, [goals.data]);
+
+  const currentActual = currentMonthGoal ? actualMap.get(`${currentMonthGoal.store_id}-${currentMonthGoal.month}`) : null;
+  const currentAttainment =
+    currentActual?.revenue_actual != null && Number(currentMonthGoal?.meta_faturamento) > 0
+      ? (Number(currentActual.revenue_actual) / Number(currentMonthGoal?.meta_faturamento)) * 100
+      : null;
+
   return (
     <div className="space-y-4">
       <div className="flex items-end gap-3">
@@ -860,6 +872,41 @@ function ManagerMetas() {
         </div>
       </div>
 
+      {currentMonthGoal && currentAttainment !== null && (
+        <Alert
+          className={
+            currentAttainment >= 90
+              ? "border-emerald-500/50 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-200"
+              : "border-destructive/60 bg-destructive/10 text-destructive dark:text-destructive-foreground"
+          }
+        >
+          {currentAttainment >= 90 ? (
+            <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400" />
+          ) : (
+            <XCircle className="size-5 text-destructive" />
+          )}
+          <div className="space-y-1">
+            <AlertTitle className="text-base font-bold flex items-center gap-2">
+              <span>{periodLabel(currentMonthGoal.month, currentMonthGoal.year)}:</span>
+              <Badge
+                className={
+                  currentAttainment >= 90
+                    ? "bg-emerald-600 text-white border-none font-bold"
+                    : "bg-destructive text-white border-none font-bold"
+                }
+              >
+                {currentAttainment >= 90 ? "ELEGÍVEL" : "INELEGÍVEL"}
+              </Badge>
+            </AlertTitle>
+            <AlertDescription className="text-sm">
+              {currentAttainment >= 90
+                ? `A loja atingiu ${currentAttainment.toFixed(2)}% da meta e está ELEGÍVEL ao valor integral do bônus (gatilho ≥ 90%).`
+                : `A loja atingiu ${currentAttainment.toFixed(2)}% da meta, ficando abaixo do gatilho mínimo de 90%. A loja está INELEGÍVEL ao bônus neste período.`}
+            </AlertDescription>
+          </div>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Meta da minha loja</CardTitle>
@@ -873,10 +920,11 @@ function ManagerMetas() {
                   <TableHead>Mês</TableHead>
                   <TableHead className="text-right">Meta de faturamento</TableHead>
                   <TableHead className="text-right">Faturamento realizado</TableHead>
-                  <TableHead className="text-right">% da meta</TableHead>
+                  <TableHead className="text-right">% Faturamento</TableHead>
+                  <TableHead className="text-center">Elegibilidade</TableHead>
                   <TableHead className="text-right">Meta de TC</TableHead>
                   <TableHead className="text-right">TC realizado</TableHead>
-                  <TableHead className="text-right">% da meta</TableHead>
+                  <TableHead className="text-right">% TC</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -890,6 +938,8 @@ function ManagerMetas() {
                     a?.tc_actual != null && Number(g.meta_tc) > 0
                       ? (Number(a.tc_actual) / Number(g.meta_tc)) * 100
                       : null;
+                  const isEligible = fatPct !== null ? fatPct >= 90 : null;
+
                   return (
                     <TableRow key={g.id}>
                       <TableCell className="font-medium">
@@ -900,8 +950,29 @@ function ManagerMetas() {
                       <TableCell className="text-right">
                         {a?.revenue_actual != null ? brl(a.revenue_actual) : "—"}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell
+                        className={
+                          fatPct === null
+                            ? "text-right"
+                            : fatPct >= 90
+                              ? "text-right font-bold text-emerald-600 dark:text-emerald-400"
+                              : "text-right font-bold text-destructive"
+                        }
+                      >
                         {fatPct === null ? "—" : `${fatPct.toFixed(1)}%`}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {isEligible === true && (
+                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px]">
+                            ELEGÍVEL
+                          </Badge>
+                        )}
+                        {isEligible === false && (
+                          <Badge variant="destructive" className="font-bold text-[11px]">
+                            INELEGÍVEL
+                          </Badge>
+                        )}
+                        {isEligible === null && <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-right font-semibold">{intFmt(g.meta_tc)}</TableCell>
                       <TableCell className="text-right">
@@ -915,7 +986,7 @@ function ManagerMetas() {
                 })}
                 {(goals.data ?? []).length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-muted-foreground">
+                    <TableCell colSpan={9} className="text-muted-foreground">
                       Nenhuma meta publicada para {year}. Fale com o administrador.
                     </TableCell>
                   </TableRow>
