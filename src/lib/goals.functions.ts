@@ -246,3 +246,134 @@ async function generate(
   }
   return count;
 }
+
+const updateManualSchema = z.object({
+  goal_id: z.string().uuid(),
+  meta_faturamento: z.number().min(0),
+  meta_tc: z.number().min(0),
+  reason: z.string().min(3, "Informe uma justificativa para o ajuste manual da meta."),
+});
+
+/** Ajuste manual exclusivo do Master com justificativa e trilha de auditoria. */
+export const updateStoreGoalManual = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => updateManualSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await assertMaster(supabase);
+
+    const { data: prev, error: prevErr } = await supabase
+      .from("store_goals")
+      .select("id, store_id, year, month, meta_faturamento, meta_tc, version, stores(name)")
+      .eq("id", data.goal_id)
+      .single();
+    if (prevErr || !prev) throw new Error("Meta não encontrada.");
+
+    const { error: updErr } = await supabase
+      .from("store_goals")
+      .update({
+        meta_faturamento: data.meta_faturamento,
+        meta_tc: data.meta_tc,
+        version: Number(prev.version) + 1,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", data.goal_id);
+    if (updErr) throw new Error(updErr.message);
+
+    const storeName = (prev.stores as { name?: string } | null)?.name ?? "Loja";
+    await supabase.from("audit_logs").insert({
+      user_id: userId,
+      action: "ajuste_manual_meta",
+      entity: "store_goals",
+      entity_id: data.goal_id,
+      store_id: prev.store_id,
+      field: `Meta ${prev.year}-${String(prev.month).padStart(2, "0")}`,
+      old_value: `FAT: R$ ${Number(prev.meta_faturamento).toFixed(2)} | TC: ${Number(prev.meta_tc).toFixed(0)}`,
+      new_value: `FAT: R$ ${data.meta_faturamento.toFixed(2)} | TC: ${data.meta_tc.toFixed(0)}`,
+      description: `Ajuste manual da meta (${storeName}): ${data.reason.trim()}`,
+    });
+
+    return { ok: true, goal_id: data.goal_id };
+  });
+
+/** Sincronização oficial dos dados do PDF (10 lojas x 7 meses = 70 registros auditados). */
+export const syncOfficialPdfGoals = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    await assertMaster(supabase);
+
+    const { OFFICIAL_PDF_DATA, OFFICIAL_PDF_STORES } = await import("@/lib/official-pdf-data");
+
+    // 1. Garante que todas as lojas do PDF existam na tabela stores
+    const { data: existingStores, error: stErr } = await supabase
+      .from("stores")
+      .select("id, name");
+    if (stErr) throw new Error(stErr.message);
+
+    const storeMap = new Map<string, string>();
+    for (const s of existingStores ?? []) {
+      storeMap.set(s.name.trim().toUpperCase(), s.id);
+    }
+
+    for (const storeName of OFFICIAL_PDF_STORES) {
+      if (!storeMap.has(storeName)) {
+        const { data: newStore, error: insErr } = await supabase
+          .from("stores")
+          .insert({ name: storeName, active: true })
+          .select("id, name")
+          .single();
+        if (insErr) throw new Error(`Erro ao criar loja ${storeName}: ${insErr.message}`);
+        storeMap.set(storeName, newStore.id);
+      }
+    }
+
+    // 2. Grava/atualiza os registros de faturamento base do ano anterior (2025)
+    for (const item of OFFICIAL_PDF_DATA) {
+      const storeId = storeMap.get(item.storeName);
+      if (!storeId) continue;
+
+      const { data: existRev } = await supabase
+        .from("revenue_history")
+        .select("id")
+        .eq("store_id", storeId)
+        .eq("year", item.year)
+        .eq("month", item.month)
+        .maybeSingle();
+
+      const payload = {
+        store_id: storeId,
+        year: item.year,
+        month: item.month,
+        receita_vendas: item.receita_vendas,
+        taxa_servico: item.taxa_servico,
+        tc: item.tc,
+        source_file: "PDF Oficial - Metas 2025/2026",
+        imported_at: new Date().toISOString(),
+        imported_by: userId,
+      };
+
+      if (existRev) {
+        await supabase.from("revenue_history").update(payload).eq("id", existRev.id);
+      } else {
+        await supabase.from("revenue_history").insert(payload);
+      }
+    }
+
+    // 3. Gera automaticamente as metas para 2026 com base em 2025 (+10%)
+    const generated = await generate(supabase, userId, 2025, 2026, null);
+
+    await supabase.from("audit_logs").insert({
+      user_id: userId,
+      action: "sincronizacao_pdf_oficial",
+      entity: "store_goals",
+      description: `Carga oficial do PDF concluída: 10 lojas sincronizadas, ${OFFICIAL_PDF_DATA.length} registros de base 2025 e ${generated} metas geradas para 2026 (+10%).`,
+    });
+
+    return {
+      ok: true,
+      storesCount: OFFICIAL_PDF_STORES.length,
+      recordsCount: OFFICIAL_PDF_DATA.length,
+      goalsGenerated: generated,
+    };
+  });

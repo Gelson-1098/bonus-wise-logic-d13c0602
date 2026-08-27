@@ -3,9 +3,30 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowRight, CheckCircle2, FileSpreadsheet, RefreshCw, Upload, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Building2,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Edit3,
+  FileSpreadsheet,
+  FileText,
+  RefreshCw,
+  Sparkles,
+  Upload,
+  XCircle,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { generateGoals, getGoalGrowth, importRevenueHistory, saveGoalGrowth } from "@/lib/goals.functions";
+import {
+  generateGoals,
+  getGoalGrowth,
+  importRevenueHistory,
+  saveGoalGrowth,
+  syncOfficialPdfGoals,
+  updateStoreGoalManual,
+} from "@/lib/goals.functions";
 import {
   buildRows,
   COLUMN_HINTS,
@@ -21,11 +42,20 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,20 +67,22 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { brl, MONTHS, periodLabel } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/metas")({
   head: () => ({
     meta: [
-      { title: "Metas de faturamento e TC | PRISMA" },
+      { title: "Orçamento de Metas | PRISMA" },
       {
         name: "description",
         content:
-          "Importe o faturamento do ano anterior, gere automaticamente as metas de faturamento e de clientes atendidos e acompanhe a meta de cada loja.",
+          "Orçamento oficial de metas por loja e mês: faturamento e clientes atendidos (TC) com base no ano anterior + 10%.",
       },
-      { property: "og:title", content: "Metas de faturamento e TC | PRISMA" },
+      { property: "og:title", content: "Orçamento de Metas | PRISMA" },
       {
         property: "og:description",
-        content: "Importe o faturamento do ano anterior, gere automaticamente as metas de faturamento e de clientes atendidos e acompanhe a meta de cada loja.",
+        content:
+          "Orçamento oficial de metas por loja e mês: faturamento e clientes atendidos (TC) com base no ano anterior + 10%.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -62,17 +94,27 @@ export const Route = createFileRoute("/_authenticated/remuneracao/mensal/metas")
 const intFmt = (v: number | null | undefined) =>
   Number(v ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
+const PDF_MONTHS = [
+  { month: 6, label: "JUN", full: "Junho" },
+  { month: 7, label: "JUL", full: "Julho" },
+  { month: 8, label: "AGO", full: "Agosto" },
+  { month: 9, label: "SET", full: "Setembro" },
+  { month: 10, label: "OUT", full: "Outubro" },
+  { month: 11, label: "NOV", full: "Novembro" },
+  { month: 12, label: "DEZ", full: "Dezembro" },
+];
+
 function MetasPage() {
   const { data: access } = useAccess();
   const isMaster = access?.isMaster ?? false;
 
   return (
     <AppShell
-      title="Metas"
+      title="Orçamento de Metas"
       description={
         isMaster
-          ? "Importação do faturamento do ano anterior e geração automática das metas"
-          : "Meta de faturamento e de clientes atendidos da sua loja"
+          ? "Orçamento oficial por loja e mês — base do ano anterior + 10% (Edição exclusiva Master)"
+          : "Orçamento oficial de metas da sua loja — base do ano anterior + 10% (Somente leitura)"
       }
     >
       {isMaster ? <MasterMetas /> : <ManagerMetas />}
@@ -80,18 +122,22 @@ function MetasPage() {
   );
 }
 
-/* ------------------------------------------------------------------ Master */
+/* ------------------------------------------------------------------ Master View */
 
 function MasterMetas() {
   return (
-    <Tabs defaultValue="dashboard" className="space-y-4">
+    <Tabs defaultValue="orcamento" className="space-y-4">
       <TabsList>
-        <TabsTrigger value="dashboard">Metas geradas</TabsTrigger>
-        <TabsTrigger value="importar">Importar faturamento</TabsTrigger>
-        <TabsTrigger value="config">Crescimento</TabsTrigger>
+        <TabsTrigger value="orcamento">Orçamento de Metas (Matriz)</TabsTrigger>
+        <TabsTrigger value="detalhado">Visão Analítica</TabsTrigger>
+        <TabsTrigger value="importar">Importar Planilha</TabsTrigger>
+        <TabsTrigger value="config">Parâmetros de Crescimento</TabsTrigger>
       </TabsList>
-      <TabsContent value="dashboard">
-        <GoalsDashboard />
+      <TabsContent value="orcamento">
+        <BudgetMatrixView isMaster={true} />
+      </TabsContent>
+      <TabsContent value="detalhado">
+        <GoalsDashboard isMaster={true} />
       </TabsContent>
       <TabsContent value="importar">
         <ImportWizard />
@@ -103,18 +149,696 @@ function MasterMetas() {
   );
 }
 
+/* ------------------------------------------------------------------ Manager View */
+
+function ManagerMetas() {
+  return (
+    <div className="space-y-6">
+      <BudgetMatrixView isMaster={false} />
+    </div>
+  );
+}
+
 function useStores() {
   return useQuery({
     queryKey: ["stores-metas"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("stores").select("id,name,code").order("name");
+      const { data, error } = await supabase.from("stores").select("id,name,code,active").order("name");
       if (error) throw new Error(error.message);
       return data ?? [];
     },
   });
 }
 
-function GoalsDashboard() {
+/* -------------------------------------------------- Matriz Consolidada de Orçamento */
+
+type EditGoalPayload = {
+  goalId: string;
+  storeName: string;
+  storeId: string;
+  year: number;
+  month: number;
+  faturamentoBase: number;
+  metaFaturamento: number;
+  tcBase: number;
+  metaTc: number;
+};
+
+function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
+  const qc = useQueryClient();
+  const syncPdf = useServerFn(syncOfficialPdfGoals);
+  const nowYear = new Date().getFullYear();
+  const [year, setYear] = useState(nowYear);
+  const [metric, setMetric] = useState<"faturamento" | "tc">("faturamento");
+  const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
+  const [editingGoal, setEditingGoal] = useState<EditGoalPayload | null>(null);
+
+  const { data: stores, isLoading: loadingStores } = useStores();
+
+  const goalsQuery = useQuery({
+    queryKey: ["store-goals", year],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("store_goals")
+        .select(
+          "id,store_id,year,month,base_year,faturamento_base_ano_anterior,meta_faturamento,tc_ano_anterior,meta_tc,growth_fat_pct,growth_tc_pct,version,stores(name)",
+        )
+        .eq("year", year)
+        .order("month");
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    },
+  });
+
+  const actualsQuery = useQuery({
+    queryKey: ["actuals-targets", year],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("bonus_periods")
+        .select("id,store_id,month,year,store_targets(revenue_actual,tc_actual)")
+        .eq("year", year);
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    },
+  });
+
+  const actualMap = useMemo(() => {
+    const m = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
+    for (const p of actualsQuery.data ?? []) {
+      const t = p.store_targets as unknown as { revenue_actual: number | null; tc_actual: number | null } | null;
+      if (t) m.set(`${p.store_id}-${p.month}`, t);
+    }
+    return m;
+  }, [actualsQuery.data]);
+
+  const syncPdfMutation = useMutation({
+    mutationFn: async () => syncPdf({}),
+    onSuccess: (res) => {
+      toast.success("Orçamento oficial carregado!", {
+        description: `${res.storesCount} lojas sincronizadas e ${res.goalsGenerated} metas geradas para ${year} com base no PDF oficial (+10%).`,
+      });
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => toast.error("Falha ao sincronizar", { description: e.message }),
+  });
+
+  // Mapeamento: chave = "storeId-month" -> Goal
+  const goalMap = useMemo(() => {
+    const m = new Map<string, (typeof goalsQuery.data)[number]>();
+    for (const g of goalsQuery.data ?? []) {
+      m.set(`${g.store_id}-${g.month}`, g);
+    }
+    return m;
+  }, [goalsQuery.data]);
+
+  // Lista de lojas ativas
+  const activeStores = useMemo(() => {
+    return (stores ?? []).filter((s) => s.active);
+  }, [stores]);
+
+  // Totais por mês
+  const monthlyTotals = useMemo(() => {
+    const totals: Record<number, { baseFat: number; metaFat: number; baseTc: number; metaTc: number }> = {};
+    for (const pm of PDF_MONTHS) {
+      totals[pm.month] = { baseFat: 0, metaFat: 0, baseTc: 0, metaTc: 0 };
+    }
+    for (const g of goalsQuery.data ?? []) {
+      if (totals[g.month]) {
+        totals[g.month]!.baseFat += Number(g.faturamento_base_ano_anterior);
+        totals[g.month]!.metaFat += Number(g.meta_faturamento);
+        totals[g.month]!.baseTc += Number(g.tc_ano_anterior);
+        totals[g.month]!.metaTc += Number(g.meta_tc);
+      }
+    }
+    return totals;
+  }, [goalsQuery.data]);
+
+  const totalPeriodMeta = useMemo(() => {
+    return (goalsQuery.data ?? []).reduce(
+      (acc, g) => ({
+        metaFat: acc.metaFat + Number(g.meta_faturamento),
+        baseFat: acc.baseFat + Number(g.faturamento_base_ano_anterior),
+        metaTc: acc.metaTc + Number(g.meta_tc),
+        baseTc: acc.baseTc + Number(g.tc_ano_anterior),
+      }),
+      { metaFat: 0, baseFat: 0, metaTc: 0, baseTc: 0 },
+    );
+  }, [goalsQuery.data]);
+
+  return (
+    <div className="space-y-5">
+      {/* Barra de Ações e Filtros */}
+      <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Ano do Orçamento</Label>
+              <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+                <SelectTrigger className="w-[120px] font-semibold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[nowYear - 1, nowYear, nowYear + 1].map((y) => (
+                    <SelectItem key={y} value={String(y)}>
+                      {y}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Indicador Visualizado</Label>
+              <div className="flex rounded-md border p-0.5 bg-muted/30">
+                <Button
+                  size="sm"
+                  variant={metric === "faturamento" ? "default" : "ghost"}
+                  className="h-8 text-xs font-semibold"
+                  onClick={() => setMetric("faturamento")}
+                >
+                  Faturamento (R$)
+                </Button>
+                <Button
+                  size="sm"
+                  variant={metric === "tc" ? "default" : "ghost"}
+                  className="h-8 text-xs font-semibold"
+                  onClick={() => setMetric("tc")}
+                >
+                  TC (Clientes)
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {isMaster ? (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                className="border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary"
+                onClick={() => syncPdfMutation.mutate()}
+                disabled={syncPdfMutation.isPending}
+              >
+                <Sparkles className="size-4 text-primary mr-1" />
+                {syncPdfMutation.isPending ? "Sincronizando..." : "Carregar Orçamento Oficial do PDF"}
+              </Button>
+            </div>
+          ) : (
+            <Badge variant="outline" className="px-3 py-1 bg-muted/40 text-muted-foreground text-xs">
+              🔒 Orçamento Oficial Fixado (Somente Leitura)
+            </Badge>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* KPI Cards de Resumo */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardContent className="pt-5">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              {metric === "faturamento" ? "Orçamento Total Faturamento" : "Orçamento Total TC"}
+            </p>
+            <p className="mt-2 text-2xl font-bold tracking-tight text-primary">
+              {metric === "faturamento" ? brl(totalPeriodMeta.metaFat) : intFmt(totalPeriodMeta.metaTc)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Meta consolidada de Junho a Dezembro ({year})</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-5">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              {metric === "faturamento" ? `Realizado Ano Anterior (${year - 1})` : `TC Ano Anterior (${year - 1})`}
+            </p>
+            <p className="mt-2 text-2xl font-semibold tracking-tight">
+              {metric === "faturamento" ? brl(totalPeriodMeta.baseFat) : intFmt(totalPeriodMeta.baseTc)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Base oficial do PDF</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-5">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Crescimento Orçado</p>
+            <p className="mt-2 text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+              + 10,00%
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Meta = Base do Ano Anterior × 110%</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-5">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Gatilho de Elegibilidade</p>
+            <p className="mt-2 text-2xl font-bold tracking-tight">90,00%</p>
+            <p className="mt-1 text-xs text-muted-foreground">Atingimento ≥ 90% libera bônus integral</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tabela Matriz Consolidada */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <FileText className="size-4 text-primary" />
+              <span>
+                Orçamento Oficial de Metas {year} — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Clientes)"}
+              </span>
+            </CardTitle>
+            <CardDescription>
+              Valores calculados com base no ano anterior ({year - 1}) + 10%. Clique na loja para expandir o detalhamento completo.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="px-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 font-semibold">
+                  <TableHead className="w-[200px]">Loja</TableHead>
+                  {PDF_MONTHS.map((pm) => (
+                    <TableHead key={pm.month} className="text-right">
+                      {pm.label}
+                    </TableHead>
+                  ))}
+                  <TableHead className="text-right font-bold text-primary">TOTAL PERÍODO</TableHead>
+                  <TableHead className="text-center w-[100px]">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loadingStores && (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-6 text-muted-foreground">
+                      Carregando orçamento...
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loadingStores && activeStores.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-6 text-muted-foreground">
+                      Nenhuma loja ativa cadastrada.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {activeStores.map((s) => {
+                  let storeTotal = 0;
+                  const isExpanded = expandedStoreId === s.id;
+
+                  return (
+                    <ReactFragment key={s.id}>
+                      <TableRow
+                        className={cn(
+                          "cursor-pointer hover:bg-muted/30 transition-colors",
+                          isExpanded && "bg-muted/20 border-l-4 border-l-primary",
+                        )}
+                        onClick={() => setExpandedStoreId(isExpanded ? null : s.id)}
+                      >
+                        <TableCell className="font-semibold flex items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronDown className="size-4 text-primary" />
+                          ) : (
+                            <ChevronRight className="size-4 text-muted-foreground" />
+                          )}
+                          <span>{s.name}</span>
+                        </TableCell>
+
+                        {PDF_MONTHS.map((pm) => {
+                          const goal = goalMap.get(`${s.id}-${pm.month}`);
+                          const val = goal
+                            ? metric === "faturamento"
+                              ? Number(goal.meta_faturamento)
+                              : Number(goal.meta_tc)
+                            : 0;
+                          storeTotal += val;
+
+                          return (
+                            <TableCell key={pm.month} className="text-right font-medium text-xs sm:text-sm">
+                              {val > 0 ? (
+                                metric === "faturamento" ? (
+                                  brl(val)
+                                ) : (
+                                  intFmt(val)
+                                )
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          );
+                        })}
+
+                        <TableCell className="text-right font-bold text-primary">
+                          {storeTotal > 0 ? (
+                            metric === "faturamento" ? (
+                              brl(storeTotal)
+                            ) : (
+                              intFmt(storeTotal)
+                            )
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setExpandedStoreId(isExpanded ? null : s.id)}
+                          >
+                            {isExpanded ? "Ocultar" : "Detalhar"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Linha Expandida com Detalhamento Completo da Loja */}
+                      {isExpanded && (
+                        <TableRow className="bg-muted/10">
+                          <TableCell colSpan={10} className="p-4">
+                            <StoreDetailCard
+                              storeId={s.id}
+                              storeName={s.name}
+                              year={year}
+                              goalMap={goalMap}
+                              actualMap={actualMap}
+                              isMaster={isMaster}
+                              onEditGoal={(payload) => setEditingGoal(payload)}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </ReactFragment>
+                  );
+                })}
+
+                {/* Linha de Totais Gerais */}
+                {activeStores.length > 0 && (
+                  <TableRow className="bg-muted/50 font-bold border-t-2">
+                    <TableCell>TOTAL CONSOLIDADO</TableCell>
+                    {PDF_MONTHS.map((pm) => {
+                      const mTot = monthlyTotals[pm.month];
+                      const val = metric === "faturamento" ? mTot?.metaFat ?? 0 : mTot?.metaTc ?? 0;
+                      return (
+                        <TableCell key={pm.month} className="text-right font-bold">
+                          {val > 0 ? (metric === "faturamento" ? brl(val) : intFmt(val)) : "—"}
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell className="text-right font-extrabold text-primary">
+                      {metric === "faturamento" ? brl(totalPeriodMeta.metaFat) : intFmt(totalPeriodMeta.metaTc)}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Modal de Edição Exclusivo para o Master */}
+      {editingGoal && (
+        <EditGoalModal
+          payload={editingGoal}
+          onClose={() => setEditingGoal(null)}
+          onSaved={() => {
+            setEditingGoal(null);
+            qc.invalidateQueries();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ReactFragment helper wrapper for clean JSX in maps
+function ReactFragment({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+
+/* ------------------------------------------------ Detalhamento por Loja */
+
+function StoreDetailCard({
+  storeId,
+  storeName,
+  year,
+  goalMap,
+  actualMap,
+  isMaster,
+  onEditGoal,
+}: {
+  storeId: string;
+  storeName: string;
+  year: number;
+  goalMap: Map<string, any>;
+  actualMap: Map<string, any>;
+  isMaster: boolean;
+  onEditGoal: (payload: EditGoalPayload) => void;
+}) {
+  return (
+    <Card className="border shadow-none bg-card">
+      <CardHeader className="pb-3 flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <Building2 className="size-4 text-primary" />
+            <span>Detalhamento Oficial — {storeName} ({year})</span>
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Meta Orçada (+10% sobre o ano anterior) vs Realizado Atual e Apuração de Elegibilidade
+          </CardDescription>
+        </div>
+        {!isMaster && (
+          <Badge variant="outline" className="text-xs bg-muted/40">
+            🔒 Meta Fixa do Orçamento
+          </Badge>
+        )}
+      </CardHeader>
+      <CardContent className="px-0">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="text-xs">
+                <TableHead>Mês</TableHead>
+                <TableHead className="text-right">Faturamento A-1 ({year - 1})</TableHead>
+                <TableHead className="text-right">Meta Orçada FAT (+10%)</TableHead>
+                <TableHead className="text-right">FAT Realizado</TableHead>
+                <TableHead className="text-right">% Atingimento FAT</TableHead>
+                <TableHead className="text-center">Elegibilidade Bônus</TableHead>
+                <TableHead className="text-right">TC A-1 ({year - 1})</TableHead>
+                <TableHead className="text-right">Meta Orçada TC (+10%)</TableHead>
+                <TableHead className="text-right">TC Realizado</TableHead>
+                <TableHead className="text-right">% Atingimento TC</TableHead>
+                {isMaster && <TableHead className="text-center">Ações Master</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {PDF_MONTHS.map((pm) => {
+                const goal = goalMap.get(`${storeId}-${pm.month}`);
+                const actual = actualMap.get(`${storeId}-${pm.month}`);
+
+                const baseFat = goal ? Number(goal.faturamento_base_ano_anterior) : 0;
+                const metaFat = goal ? Number(goal.meta_faturamento) : 0;
+                const revAct = actual?.revenue_actual != null ? Number(actual.revenue_actual) : null;
+                const fatPct = metaFat > 0 && revAct !== null ? (revAct / metaFat) * 100 : null;
+
+                const baseTc = goal ? Number(goal.tc_ano_anterior) : 0;
+                const metaTc = goal ? Number(goal.meta_tc) : 0;
+                const tcAct = actual?.tc_actual != null ? Number(actual.tc_actual) : null;
+                const tcPct = metaTc > 0 && tcAct !== null ? (tcAct / metaTc) * 100 : null;
+
+                const isEligible = fatPct !== null ? fatPct >= 90 : null;
+
+                return (
+                  <TableRow key={pm.month} className="text-xs">
+                    <TableCell className="font-semibold">{pm.full}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{baseFat > 0 ? brl(baseFat) : "—"}</TableCell>
+                    <TableCell className="text-right font-bold text-primary">{metaFat > 0 ? brl(metaFat) : "—"}</TableCell>
+                    <TableCell className="text-right font-medium">{revAct !== null ? brl(revAct) : "—"}</TableCell>
+                    <TableCell
+                      className={cn(
+                        "text-right font-bold",
+                        fatPct === null
+                          ? "text-muted-foreground"
+                          : fatPct >= 90
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-destructive",
+                      )}
+                    >
+                      {fatPct !== null ? `${fatPct.toFixed(1)}%` : "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {isEligible === true && (
+                        <Badge className="bg-emerald-600 text-white font-bold text-[10px] px-2 py-0.5">
+                          ELEGÍVEL
+                        </Badge>
+                      )}
+                      {isEligible === false && (
+                        <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
+                          INELEGÍVEL
+                        </Badge>
+                      )}
+                      {isEligible === null && <span className="text-muted-foreground text-[11px]">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">{baseTc > 0 ? intFmt(baseTc) : "—"}</TableCell>
+                    <TableCell className="text-right font-bold text-primary">{metaTc > 0 ? intFmt(metaTc) : "—"}</TableCell>
+                    <TableCell className="text-right font-medium">{tcAct !== null ? intFmt(tcAct) : "—"}</TableCell>
+                    <TableCell className="text-right font-bold text-muted-foreground">
+                      {tcPct !== null ? `${tcPct.toFixed(1)}%` : "—"}
+                    </TableCell>
+                    {isMaster && (
+                      <TableCell className="text-center">
+                        {goal ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-[11px] px-2 text-primary hover:text-primary"
+                            onClick={() =>
+                              onEditGoal({
+                                goalId: goal.id,
+                                storeName,
+                                storeId,
+                                year,
+                                month: pm.month,
+                                faturamentoBase: baseFat,
+                                metaFaturamento: metaFat,
+                                tcBase: baseTc,
+                                metaTc,
+                              })
+                            }
+                          >
+                            <Edit3 className="size-3 mr-1" /> Editar
+                          </Button>
+                        ) : (
+                          <span className="text-muted-foreground text-[11px]">Sem meta</span>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* -------------------------------- Modal de Edição de Meta (Exclusivo Master) */
+
+function EditGoalModal({
+  payload,
+  onClose,
+  onSaved,
+}: {
+  payload: EditGoalPayload;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const updateFn = useServerFn(updateStoreGoalManual);
+  const [metaFat, setMetaFat] = useState(String(payload.metaFaturamento));
+  const [metaTc, setMetaTc] = useState(String(payload.metaTc));
+  const [reason, setReason] = useState("");
+
+  const updateMutation = useMutation({
+    mutationFn: async () =>
+      updateFn({
+        data: {
+          goal_id: payload.goalId,
+          meta_faturamento: Number(metaFat),
+          meta_tc: Number(metaTc),
+          reason: reason.trim(),
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Meta atualizada com sucesso!", {
+        description: "A alteração e o motivo foram registrados na trilha de auditoria.",
+      });
+      onSaved();
+    },
+    onError: (e: Error) => toast.error("Erro ao atualizar meta", { description: e.message }),
+  });
+
+  return (
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Edit3 className="size-4 text-primary" />
+            <span>Editar Meta Orçada — {payload.storeName}</span>
+          </DialogTitle>
+          <DialogDescription>
+            Competência: <strong>{periodLabel(payload.month, payload.year)}</strong>. Exclusivo para o Master com registro obrigatório em auditoria.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="grid gap-3 sm:grid-cols-2 rounded-lg border bg-muted/20 p-3 text-xs">
+            <div>
+              <span className="text-muted-foreground">Base FAT Ano Anterior:</span>
+              <p className="font-semibold text-sm">{brl(payload.faturamentoBase)}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Base TC Ano Anterior:</span>
+              <p className="font-semibold text-sm">{intFmt(payload.tcBase)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-meta-fat">Nova Meta de Faturamento (R$)</Label>
+              <Input
+                id="edit-meta-fat"
+                type="number"
+                step="0.01"
+                value={metaFat}
+                onChange={(e) => setMetaFat(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-meta-tc">Nova Meta de TC (Clientes)</Label>
+              <Input
+                id="edit-meta-tc"
+                type="number"
+                step="1"
+                value={metaTc}
+                onChange={(e) => setMetaTc(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-reason" className="text-xs font-bold text-destructive">
+              Motivo da Alteração (Obrigatório para Auditoria) *
+            </Label>
+            <Textarea
+              id="edit-reason"
+              rows={3}
+              placeholder="Descreva a justificativa para o ajuste no orçamento oficial (ex: reforma, abertura antecipada, alinhamento diretoria)..."
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => updateMutation.mutate()}
+            disabled={!reason.trim() || reason.trim().length < 3 || updateMutation.isPending}
+          >
+            Salvar e Registrar em Auditoria
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ------------------------------------------------ Tabela Analítica Master */
+
+function GoalsDashboard({ isMaster }: { isMaster?: boolean }) {
   const nowYear = new Date().getFullYear();
   const [year, setYear] = useState(nowYear);
   const [storeId, setStoreId] = useState("all");
@@ -249,7 +973,7 @@ function GoalsDashboard() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            Metas {year} — base {year - 1}
+            Metas Analíticas {year} — base {year - 1}
           </CardTitle>
         </CardHeader>
         <CardContent className="px-0">
@@ -288,7 +1012,7 @@ function GoalsDashboard() {
                 {rows.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="text-muted-foreground">
-                      Nenhuma meta gerada para {year}. Importe o faturamento de {year - 1} na aba ao lado.
+                      Nenhuma meta gerada para {year}. Sincronize o PDF na aba Orçamento de Metas.
                     </TableCell>
                   </TableRow>
                 )}
@@ -788,214 +1512,8 @@ function ImportWizard() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={() => doImport.mutate(true)}>Substituir</AlertDialogAction>
           </AlertDialogFooter>
-
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
-}
-
-/* ----------------------------------------------------------- Gerente view */
-
-function ManagerMetas() {
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-
-  const goals = useQuery({
-    queryKey: ["my-goals", year],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("store_goals")
-        .select("id,store_id,year,month,meta_faturamento,meta_tc,stores(name)")
-        .eq("year", year)
-        .order("month");
-      if (error) throw new Error(error.message);
-      return data ?? [];
-    },
-  });
-
-  const actuals = useQuery({
-    queryKey: ["my-actuals", year],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("bonus_periods")
-        .select("store_id,month,year,store_targets(revenue_actual,tc_actual)")
-        .eq("year", year);
-      if (error) throw new Error(error.message);
-      return data ?? [];
-    },
-  });
-
-  const actualMap = useMemo(() => {
-    const m = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
-    for (const p of actuals.data ?? []) {
-      const t = p.store_targets as unknown as {
-        revenue_actual: number | null;
-        tc_actual: number | null;
-      } | null;
-      if (t) m.set(`${p.store_id}-${p.month}`, t);
-    }
-    return m;
-  }, [actuals.data]);
-
-  const nowYear = now.getFullYear();
-
-  // Encontra o registro do mês atual ou mais recente para destacar no banner
-  const currentMonthGoal = useMemo(() => {
-    const list = goals.data ?? [];
-    return list.find((g) => g.month === now.getMonth() + 1) || list[list.length - 1] || null;
-  }, [goals.data]);
-
-  const currentActual = currentMonthGoal ? actualMap.get(`${currentMonthGoal.store_id}-${currentMonthGoal.month}`) : null;
-  const currentAttainment =
-    currentActual?.revenue_actual != null && Number(currentMonthGoal?.meta_faturamento) > 0
-      ? (Number(currentActual.revenue_actual) / Number(currentMonthGoal?.meta_faturamento)) * 100
-      : null;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-end gap-3">
-        <div className="space-y-1.5">
-          <Label>Ano</Label>
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-[120px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[nowYear - 1, nowYear, nowYear + 1].map((y) => (
-                <SelectItem key={y} value={String(y)}>
-                  {y}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {currentMonthGoal && currentAttainment !== null && (
-        <Alert
-          className={
-            currentAttainment >= 90
-              ? "border-emerald-500/50 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-200"
-              : "border-destructive/60 bg-destructive/10 text-destructive dark:text-destructive-foreground"
-          }
-        >
-          {currentAttainment >= 90 ? (
-            <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400" />
-          ) : (
-            <XCircle className="size-5 text-destructive" />
-          )}
-          <div className="space-y-1">
-            <AlertTitle className="text-base font-bold flex items-center gap-2">
-              <span>{periodLabel(currentMonthGoal.month, currentMonthGoal.year)}:</span>
-              <Badge
-                className={
-                  currentAttainment >= 90
-                    ? "bg-emerald-600 text-white border-none font-bold"
-                    : "bg-destructive text-white border-none font-bold"
-                }
-              >
-                {currentAttainment >= 90 ? "ELEGÍVEL" : "INELEGÍVEL"}
-              </Badge>
-            </AlertTitle>
-            <AlertDescription className="text-sm">
-              {currentAttainment >= 90
-                ? `A loja atingiu ${currentAttainment.toFixed(2)}% da meta e está ELEGÍVEL ao valor integral do bônus (gatilho ≥ 90%).`
-                : `A loja atingiu ${currentAttainment.toFixed(2)}% da meta, ficando abaixo do gatilho mínimo de 90%. A loja está INELEGÍVEL ao bônus neste período.`}
-            </AlertDescription>
-          </div>
-        </Alert>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Meta da minha loja</CardTitle>
-        </CardHeader>
-        <CardContent className="px-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Loja</TableHead>
-                  <TableHead>Mês</TableHead>
-                  <TableHead className="text-right">Meta de faturamento</TableHead>
-                  <TableHead className="text-right">Faturamento realizado</TableHead>
-                  <TableHead className="text-right">% Faturamento</TableHead>
-                  <TableHead className="text-center">Elegibilidade</TableHead>
-                  <TableHead className="text-right">Meta de TC</TableHead>
-                  <TableHead className="text-right">TC realizado</TableHead>
-                  <TableHead className="text-right">% TC</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(goals.data ?? []).map((g) => {
-                  const a = actualMap.get(`${g.store_id}-${g.month}`);
-                  const fatPct =
-                    a?.revenue_actual != null && Number(g.meta_faturamento) > 0
-                      ? (Number(a.revenue_actual) / Number(g.meta_faturamento)) * 100
-                      : null;
-                  const tcPct =
-                    a?.tc_actual != null && Number(g.meta_tc) > 0
-                      ? (Number(a.tc_actual) / Number(g.meta_tc)) * 100
-                      : null;
-                  const isEligible = fatPct !== null ? fatPct >= 90 : null;
-
-                  return (
-                    <TableRow key={g.id}>
-                      <TableCell className="font-medium">
-                        {(g.stores as { name: string } | null)?.name ?? "—"}
-                      </TableCell>
-                      <TableCell>{periodLabel(g.month, g.year)}</TableCell>
-                      <TableCell className="text-right font-semibold">{brl(g.meta_faturamento)}</TableCell>
-                      <TableCell className="text-right">
-                        {a?.revenue_actual != null ? brl(a.revenue_actual) : "—"}
-                      </TableCell>
-                      <TableCell
-                        className={
-                          fatPct === null
-                            ? "text-right"
-                            : fatPct >= 90
-                              ? "text-right font-bold text-emerald-600 dark:text-emerald-400"
-                              : "text-right font-bold text-destructive"
-                        }
-                      >
-                        {fatPct === null ? "—" : `${fatPct.toFixed(1)}%`}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {isEligible === true && (
-                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px]">
-                            ELEGÍVEL
-                          </Badge>
-                        )}
-                        {isEligible === false && (
-                          <Badge variant="destructive" className="font-bold text-[11px]">
-                            INELEGÍVEL
-                          </Badge>
-                        )}
-                        {isEligible === null && <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">{intFmt(g.meta_tc)}</TableCell>
-                      <TableCell className="text-right">
-                        {a?.tc_actual != null ? intFmt(a.tc_actual) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {tcPct === null ? "—" : `${tcPct.toFixed(1)}%`}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {(goals.data ?? []).length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-muted-foreground">
-                      Nenhuma meta publicada para {year}. Fale com o administrador.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
