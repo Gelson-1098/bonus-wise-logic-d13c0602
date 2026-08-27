@@ -316,7 +316,7 @@ export const openPeriod = createServerFn({ method: "POST" })
     }
 
 
-    const { data: employees } = await supabase
+    const { data: employees } = await supabaseAdmin
       .from("employees")
       .select("id, position_id, positions(base_value)")
       .eq("store_id", data.store_id)
