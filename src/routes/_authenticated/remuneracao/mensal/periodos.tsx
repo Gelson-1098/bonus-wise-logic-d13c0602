@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import { Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { transitionPeriod } from "@/lib/bonus.functions";
+import { listPositionsBasic } from "@/lib/rules.functions";
 import { AppShell } from "@/components/app-shell";
 import { PeriodPicker } from "@/components/period-picker";
 import { useAccess } from "@/hooks/use-auth";
@@ -23,13 +24,13 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/periodos")({
   head: () => ({
     meta: [
-      { title: "Períodos e conferência | VÉRTICE" },
+      { title: "Períodos e conferência | PRISMA" },
       {
         name: "description",
         content:
           "Confira, aprove, feche e exporte os períodos de bonificação de cada loja com histórico imutável.",
       },
-      { property: "og:title", content: "Períodos e conferência | VÉRTICE" },
+      { property: "og:title", content: "Períodos e conferência | PRISMA" },
       { property: "og:description", content: "Confira, aprove, feche e exporte os períodos de bonificação de cada loja com histórico imutável." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -57,6 +58,12 @@ function PeriodosPage() {
   const [dialog, setDialog] = useState<{ id: string; action: Action } | null>(null);
   const [note, setNote] = useState("");
   const transition = useServerFn(transitionPeriod);
+  const fetchPositions = useServerFn(listPositionsBasic);
+
+  const { data: positions } = useQuery({
+    queryKey: ["positions-basic"],
+    queryFn: () => fetchPositions(),
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["periodos", period.month, period.year],
@@ -64,7 +71,7 @@ function PeriodosPage() {
       const { data, error } = await supabase
         .from("bonus_periods")
         .select(
-          "id,status,month,year,store_id,review_note,stores(name),store_targets(target_calculated,target_adjusted,revenue_actual),employee_period_entries(id,calculated_value,approved_value,result_status,no_bonus,no_bonus_reason,employees(full_name,cpf,registration),positions(name))",
+          "id,status,month,year,store_id,review_note,stores(name),store_targets(target_calculated,target_adjusted,revenue_actual),employee_period_entries(id,calculated_value,approved_value,result_status,no_bonus,no_bonus_reason,employees(full_name,cpf,registration),position_id)",
         )
         .eq("month", period.month)
         .eq("year", period.year);
@@ -118,13 +125,13 @@ function PeriodosPage() {
         result_status: string;
         no_bonus_reason: string | null;
         employees: { full_name: string; cpf: string | null; registration: string | null } | null;
-        positions: { name: string } | null;
+        position_id: string | null;
       }>).map((e) => ({
         id: e.id,
         employee: e.employees?.full_name ?? "—",
         cpf: e.employees?.cpf ?? null,
         registration: e.employees?.registration ?? null,
-        position: e.positions?.name ?? "—",
+        position: (e.position_id && (positions ?? []).find((x) => x.id === e.position_id)?.name) || "—",
         result_status: e.result_status,
         reason: e.no_bonus_reason,
         value: Number(e.approved_value ?? e.calculated_value ?? 0),

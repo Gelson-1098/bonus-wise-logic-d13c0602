@@ -63,9 +63,9 @@ export function LoginCard() {
   return (
     <Card className="w-full max-w-md border-border/70 shadow-lg">
       <CardHeader>
-        <CardTitle className="text-xl">Acesso ao VÉRTICE</CardTitle>
+        <CardTitle className="text-xl">Acesso ao PRISMA</CardTitle>
         <CardDescription>
-          Gestão &amp; Performance — perfis Master, Treinador e Gerente.
+          Inteligência para gestão e performance — perfis Master, Treinador e Gerente.
         </CardDescription>
       </CardHeader>
       <CardContent>

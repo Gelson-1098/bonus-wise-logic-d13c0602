@@ -4,13 +4,13 @@ import { LoginCard } from "@/components/login-card";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Entrar | VÉRTICE" },
+      { title: "Entrar | PRISMA" },
       {
         name: "description",
-        content: "Acesse a VÉRTICE para lançar, conferir e aprovar a bonificação das lojas.",
+        content: "Acesse a PRISMA para lançar, conferir e aprovar a bonificação das lojas.",
       },
-      { property: "og:title", content: "Entrar | VÉRTICE" },
-      { property: "og:description", content: "Acesse a VÉRTICE para lançar, conferir e aprovar a bonificação das lojas." },
+      { property: "og:title", content: "Entrar | PRISMA" },
+      { property: "og:description", content: "Acesse a PRISMA para lançar, conferir e aprovar a bonificação das lojas." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

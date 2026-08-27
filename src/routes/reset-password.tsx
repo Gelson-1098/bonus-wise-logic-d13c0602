@@ -10,15 +10,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export const Route = createFileRoute("/reset-password")({
   head: () => ({
     meta: [
-      { title: "Redefinir senha | VÉRTICE" },
+      { title: "Redefinir senha | PRISMA" },
       {
         name: "description",
-        content: "Defina uma nova senha de acesso à plataforma VÉRTICE de gestão e performance.",
+        content: "Defina uma nova senha de acesso à plataforma PRISMA de gestão e performance.",
       },
-      { property: "og:title", content: "Redefinir senha | VÉRTICE" },
+      { property: "og:title", content: "Redefinir senha | PRISMA" },
       {
         property: "og:description",
-        content: "Defina uma nova senha de acesso à plataforma VÉRTICE de gestão e performance.",
+        content: "Defina uma nova senha de acesso à plataforma PRISMA de gestão e performance.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -58,7 +58,7 @@ function ResetPasswordPage() {
       <Card className="w-full max-w-md border-border/70 shadow-lg">
         <CardHeader>
           <CardTitle className="text-xl">Redefinir senha</CardTitle>
-          <CardDescription>Defina a nova senha de acesso ao VÉRTICE.</CardDescription>
+          <CardDescription>Defina a nova senha de acesso ao PRISMA.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5">

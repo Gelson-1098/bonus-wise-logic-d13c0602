@@ -20,12 +20,12 @@ import { brl } from "@/lib/format";
 export const Route = createFileRoute("/_authenticated/admin/cadastros")({
   head: () => ({
     meta: [
-      { title: "Cadastros | VÉRTICE" },
+      { title: "Cadastros | PRISMA" },
       {
         name: "description",
         content: "Gerencie lojas, cargos, valores base e colaboradores elegíveis ao bônus.",
       },
-      { property: "og:title", content: "Cadastros | VÉRTICE" },
+      { property: "og:title", content: "Cadastros | PRISMA" },
       { property: "og:description", content: "Gerencie lojas, cargos, valores base e colaboradores elegíveis ao bônus." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

@@ -14,13 +14,13 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/painel")({
   head: () => ({
     meta: [
-      { title: "Painel executivo | VÉRTICE" },
+      { title: "Painel executivo | PRISMA" },
       {
         name: "description",
         content:
           "Acompanhe atingimento de metas, elegibilidade e valores de bônus por loja em cada competência.",
       },
-      { property: "og:title", content: "Painel executivo | VÉRTICE" },
+      { property: "og:title", content: "Painel executivo | PRISMA" },
       { property: "og:description", content: "Acompanhe atingimento de metas, elegibilidade e valores de bônus por loja em cada competência." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
