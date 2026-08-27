@@ -271,7 +271,13 @@ export const openPeriod = createServerFn({ method: "POST" })
   .inputValidator((input) => openSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const version = await resolveVersion(supabase, null, data.year, data.month);
+
+    // Só quem tem a loja no escopo pode abrir o período.
+    const { data: canAccess } = await supabase.rpc("can_access_store", { _store_id: data.store_id });
+    if (canAccess !== true) throw new Error("Sem permissão para abrir o período desta loja.");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const version = await resolveVersion(supabaseAdmin, null, data.year, data.month);
 
     const { data: existing } = await supabase
       .from("bonus_periods")
