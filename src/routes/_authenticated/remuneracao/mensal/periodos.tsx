@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import { Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { transitionPeriod } from "@/lib/bonus.functions";
+import { listPositionsBasic } from "@/lib/rules.functions";
 import { AppShell } from "@/components/app-shell";
 import { PeriodPicker } from "@/components/period-picker";
 import { useAccess } from "@/hooks/use-auth";
@@ -57,6 +58,12 @@ function PeriodosPage() {
   const [dialog, setDialog] = useState<{ id: string; action: Action } | null>(null);
   const [note, setNote] = useState("");
   const transition = useServerFn(transitionPeriod);
+  const fetchPositions = useServerFn(listPositionsBasic);
+
+  const { data: positions } = useQuery({
+    queryKey: ["positions-basic"],
+    queryFn: () => fetchPositions(),
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["periodos", period.month, period.year],
@@ -118,13 +125,13 @@ function PeriodosPage() {
         result_status: string;
         no_bonus_reason: string | null;
         employees: { full_name: string; cpf: string | null; registration: string | null } | null;
-        positions: { name: string } | null;
+        position_id: string | null;
       }>).map((e) => ({
         id: e.id,
         employee: e.employees?.full_name ?? "—",
         cpf: e.employees?.cpf ?? null,
         registration: e.employees?.registration ?? null,
-        position: e.positions?.name ?? "—",
+        position: (e.position_id && (positions ?? []).find((x) => x.id === e.position_id)?.name) || "—",
         result_status: e.result_status,
         reason: e.no_bonus_reason,
         value: Number(e.approved_value ?? e.calculated_value ?? 0),
