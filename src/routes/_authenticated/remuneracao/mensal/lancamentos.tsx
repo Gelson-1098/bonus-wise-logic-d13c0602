@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { AlertTriangle, Calculator, Send } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { openPeriod, saveEntryCalculation, transitionPeriod } from "@/lib/bonus.functions";
+import { getEntryRules, getPeriodVersion, listPositionsBasic } from "@/lib/rules.functions";
 import { AppShell } from "@/components/app-shell";
 import { PeriodPicker } from "@/components/period-picker";
 import { useAccess } from "@/hooks/use-auth";
@@ -87,7 +88,7 @@ function LancamentoPage() {
       const { data, error } = await supabase
         .from("bonus_periods")
         .select(
-          "id,status,month,year,review_note,version_id,bonus_rule_versions(name,min_trigger_pct,alert_pct,target_pct),store_targets(id,base_history,growth_pct,target_calculated,target_adjusted,revenue_actual,tc_actual,manager_note,notes)",
+          "id,status,month,year,review_note,version_id,store_targets(id,base_history,growth_pct,target_calculated,target_adjusted,revenue_actual,tc_actual,manager_note,notes)",
         )
         .eq("store_id", storeId)
         .eq("month", period.month)
@@ -99,6 +100,23 @@ function LancamentoPage() {
   });
 
   const periodId = periodQuery.data?.id ?? null;
+
+  const fetchVersion = useServerFn(getPeriodVersion);
+  const versionQuery = useQuery({
+    queryKey: ["period-version", periodId],
+    enabled: !!periodId,
+    queryFn: () => fetchVersion({ data: { period_id: periodId! } }),
+  });
+
+  const fetchPositions = useServerFn(listPositionsBasic);
+  const positionsQuery = useQuery({
+    queryKey: ["positions-basic"],
+    queryFn: () => fetchPositions(),
+  });
+  const positionMap = useMemo(
+    () => new Map((positionsQuery.data ?? []).map((p) => [p.id, p])),
+    [positionsQuery.data],
+  );
   const status = periodQuery.data?.status ?? null;
   const editable = !!status && EDITABLE.includes(status);
 
@@ -109,7 +127,7 @@ function LancamentoPage() {
       const { data, error } = await supabase
         .from("employee_period_entries")
         .select(
-          "id,calculated_value,approved_value,result_status,no_bonus,no_bonus_reason,notes,position_id,employees(full_name),positions(name,base_value)",
+          "id,calculated_value,approved_value,result_status,no_bonus,no_bonus_reason,notes,position_id,base_value,employees(full_name)",
         )
         .eq("period_id", periodId!);
       if (error) throw new Error(error.message);
@@ -143,9 +161,7 @@ function LancamentoPage() {
     tc_actual: number | null;
     manager_note: string | null;
   } | null;
-  const version = periodQuery.data?.bonus_rule_versions as
-    | { name: string; min_trigger_pct: number; alert_pct: number; target_pct: number }
-    | null;
+  const version = versionQuery.data ?? null;
   const goalMeta = goalQuery.data?.meta_faturamento ?? null;
   const metaValue = target?.target_adjusted ?? goalMeta ?? target?.target_calculated ?? null;
   const attainment =
@@ -288,9 +304,13 @@ function LancamentoPage() {
                         <TableCell className="font-medium">
                           {(e.employees as { full_name: string } | null)?.full_name ?? "—"}
                         </TableCell>
-                        <TableCell>{(e.positions as { name: string } | null)?.name ?? "—"}</TableCell>
+                        <TableCell>{(e.position_id && positionMap.get(e.position_id)?.name) || "—"}</TableCell>
                         <TableCell className="text-right">
-                          {brl((e.positions as { base_value: number | null } | null)?.base_value ?? 0)}
+                          {e.base_value !== null && e.base_value !== undefined
+                            ? brl(Number(e.base_value))
+                            : (e.position_id && positionMap.get(e.position_id)?.base_value) != null
+                              ? brl(Number(positionMap.get(e.position_id!)!.base_value))
+                              : "—"}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={cn(resultTone(e.result_status))}>
@@ -497,6 +517,7 @@ function EntryDialog({
 }) {
   const qc = useQueryClient();
   const save = useServerFn(saveEntryCalculation);
+  const fetchRules = useServerFn(getEntryRules);
   const [state, setState] = useState<Record<string, { status: CriterionStatus; result_value: number | null; note: string }>>({});
   const [noBonus, setNoBonus] = useState(false);
   const [reason, setReason] = useState("");
@@ -508,29 +529,25 @@ function EntryDialog({
       const { data: entry, error } = await supabase
         .from("employee_period_entries")
         .select(
-          "id,position_id,no_bonus,no_bonus_reason,notes,calculated_value,result_status,calc_snapshot,employees(full_name),positions(name,base_value),bonus_periods(version_id,month,year)",
+          "id,position_id,no_bonus,no_bonus_reason,notes,calculated_value,result_status,calc_snapshot,base_value,employees(full_name),bonus_periods(version_id,month,year)",
         )
         .eq("id", entryId)
         .single();
       if (error) throw new Error(error.message);
 
-      const versionId = (entry.bonus_periods as { version_id: string | null } | null)?.version_id ?? null;
-      const { data: criteria } = await supabase
-        .from("bonus_criteria")
-        .select(
-          "id,code,name,category,weight_pct,value_brl,is_eliminatory,metric_type,unit,comparator,target_value,target_text,requires_justification",
-        )
-        .eq("version_id", versionId ?? "00000000-0000-0000-0000-000000000000")
-        .eq("position_id", entry.position_id ?? "00000000-0000-0000-0000-000000000000")
-        .eq("active", true)
-        .order("sort_order");
+      const rules = await fetchRules({ data: { entry_id: entryId } });
 
       const { data: results } = await supabase
         .from("employee_criterion_results")
         .select("criterion_id,status,result_value,note")
         .eq("entry_id", entryId);
 
-      return { entry, criteria: (criteria ?? []) as CriterionRow[], results: results ?? [] };
+      return {
+        entry,
+        position_name: rules.position_name,
+        criteria: rules.criteria as CriterionRow[],
+        results: results ?? [],
+      };
     },
   });
 
@@ -579,7 +596,7 @@ function EntryDialog({
 
   const snapshot = (data?.entry.calc_snapshot ?? null) as { output?: { reasons?: string[]; alerts?: string[] } } | null;
   const employee = (data?.entry.employees as { full_name: string } | null)?.full_name ?? "";
-  const position = (data?.entry.positions as { name: string } | null)?.name ?? "";
+  const position = data?.position_name ?? "";
   const criteria = data?.criteria ?? [];
   const scoringSum = useMemo(
     () =>

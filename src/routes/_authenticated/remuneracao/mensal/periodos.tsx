@@ -64,7 +64,7 @@ function PeriodosPage() {
       const { data, error } = await supabase
         .from("bonus_periods")
         .select(
-          "id,status,month,year,store_id,review_note,stores(name),store_targets(target_calculated,target_adjusted,revenue_actual),employee_period_entries(id,calculated_value,approved_value,result_status,no_bonus,no_bonus_reason,employees(full_name,cpf,registration),positions(name))",
+          "id,status,month,year,store_id,review_note,stores(name),store_targets(target_calculated,target_adjusted,revenue_actual),employee_period_entries(id,calculated_value,approved_value,result_status,no_bonus,no_bonus_reason,employees(full_name,cpf,registration),position_id)",
         )
         .eq("month", period.month)
         .eq("year", period.year);
