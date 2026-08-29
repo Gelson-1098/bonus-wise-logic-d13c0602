@@ -699,10 +699,10 @@ function StoreDetailCard({
                         fatPct === null
                           ? "text-muted-foreground"
                           : fatPct >= 100
-                            ? "text-emerald-600 dark:text-emerald-400"
+                            ? "text-emerald-600 dark:text-emerald-400 font-extrabold"
                             : fatPct >= 90
-                              ? "text-emerald-500"
-                              : "text-destructive",
+                              ? "text-emerald-500 font-bold"
+                              : "text-destructive font-bold",
                       )}
                     >
                       {fatPct !== null ? `${fatPct.toFixed(1)}%` : "—"}
@@ -711,8 +711,8 @@ function StoreDetailCard({
                       {revAct === null ? (
                         <span className="text-muted-foreground text-[11px]">—</span>
                       ) : fatPct !== null && fatPct >= 100 ? (
-                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5">
-                          🟢 BATEU META
+                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5 shadow-sm">
+                          🟢 BATEU META (100%+)
                         </Badge>
                       ) : fatPct !== null && fatPct >= 90 ? (
                         <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] px-2 py-0.5">
