@@ -112,6 +112,17 @@ export const COLUMN_HINTS: Record<keyof ColumnMap, string[]> = {
   ],
 };
 
+export function normalizeStoreName(name: string) {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/^(sp|es|loja|restaurante|filial|unidade)\s+/i, "")
+    .replace(/\s+(sp|es|loja)$/i, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 export function matchStore(
   name: string,
   stores: Array<{ id: string; name: string; code: string | null }>,
@@ -120,6 +131,14 @@ export function matchStore(
   if (!key) return null;
   const exact = stores.find((s) => normalize(s.name) === key || (s.code && normalize(s.code) === key));
   if (exact) return exact.id;
+
+  const cleanKey = normalizeStoreName(name);
+  const cleanMatch = stores.find((s) => {
+    const sClean = normalizeStoreName(s.name);
+    return sClean === cleanKey || sClean.includes(cleanKey) || cleanKey.includes(sClean);
+  });
+  if (cleanMatch) return cleanMatch.id;
+
   const partial = stores.find(
     (s) => normalize(s.name).includes(key) || key.includes(normalize(s.name)),
   );

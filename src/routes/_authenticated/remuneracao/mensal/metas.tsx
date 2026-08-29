@@ -23,6 +23,7 @@ import {
   deduplicateStores,
   generateGoals,
   getGoalGrowth,
+  importActualRevenue,
   importRevenueHistory,
   saveGoalGrowth,
   syncOfficialPdfGoals,
@@ -640,10 +641,10 @@ function StoreDetailCard({
         <div>
           <CardTitle className="text-sm font-bold flex items-center gap-2">
             <Building2 className="size-4 text-primary" />
-            <span>Detalhamento Oficial — {storeName} ({year})</span>
+            <span>Comparativo Oficial {year - 1} → {year} — {storeName}</span>
           </CardTitle>
           <CardDescription className="text-xs">
-            Meta Orçada (+10% sobre o ano anterior) vs Realizado Atual e Apuração de Elegibilidade
+            Meta {year} = Realizado {year - 1} + 10% · Confronto com Realizado {year} e Status da Meta
           </CardDescription>
         </div>
         {!isMaster && (
@@ -656,17 +657,18 @@ function StoreDetailCard({
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="text-xs">
+              <TableRow className="text-xs bg-muted/40 font-semibold">
                 <TableHead>Mês</TableHead>
-                <TableHead className="text-right">Faturamento A-1 ({year - 1})</TableHead>
-                <TableHead className="text-right">Meta Orçada FAT (+10%)</TableHead>
-                <TableHead className="text-right">FAT Realizado</TableHead>
-                <TableHead className="text-right">% Atingimento FAT</TableHead>
-                <TableHead className="text-center">Elegibilidade Bônus</TableHead>
-                <TableHead className="text-right">TC A-1 ({year - 1})</TableHead>
-                <TableHead className="text-right">Meta Orçada TC (+10%)</TableHead>
-                <TableHead className="text-right">TC Realizado</TableHead>
-                <TableHead className="text-right">% Atingimento TC</TableHead>
+                <TableHead className="text-right">FAT {year - 1}</TableHead>
+                <TableHead className="text-right font-bold text-primary">Meta FAT {year} (+10%)</TableHead>
+                <TableHead className="text-right">FAT Realizado {year}</TableHead>
+                <TableHead className="text-right">% Ating. FAT</TableHead>
+                <TableHead className="text-center">Status Meta FAT</TableHead>
+                <TableHead className="text-right">Pedidos {year - 1}</TableHead>
+                <TableHead className="text-right font-bold text-primary">Meta TC {year} (+10%)</TableHead>
+                <TableHead className="text-right">TC Realizado {year}</TableHead>
+                <TableHead className="text-right">% Ating. TC</TableHead>
+                <TableHead className="text-center">Status Meta TC</TableHead>
                 {isMaster && <TableHead className="text-center">Ações Master</TableHead>}
               </TableRow>
             </TableHeader>
@@ -685,10 +687,8 @@ function StoreDetailCard({
                 const tcAct = actual?.tc_actual != null ? Number(actual.tc_actual) : null;
                 const tcPct = metaTc > 0 && tcAct !== null ? (tcAct / metaTc) * 100 : null;
 
-                const isEligible = fatPct !== null ? fatPct >= 90 : null;
-
                 return (
-                  <TableRow key={pm.month} className="text-xs">
+                  <TableRow key={pm.month} className="text-xs hover:bg-muted/20">
                     <TableCell className="font-semibold">{pm.full}</TableCell>
                     <TableCell className="text-right text-muted-foreground">{baseFat > 0 ? brl(baseFat) : "—"}</TableCell>
                     <TableCell className="text-right font-bold text-primary">{metaFat > 0 ? brl(metaFat) : "—"}</TableCell>
@@ -698,31 +698,59 @@ function StoreDetailCard({
                         "text-right font-bold",
                         fatPct === null
                           ? "text-muted-foreground"
-                          : fatPct >= 90
+                          : fatPct >= 100
                             ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-destructive",
+                            : fatPct >= 90
+                              ? "text-emerald-500"
+                              : "text-destructive",
                       )}
                     >
                       {fatPct !== null ? `${fatPct.toFixed(1)}%` : "—"}
                     </TableCell>
-                    <TableCell className="text-center">
-                      {isEligible === true && (
-                        <Badge className="bg-emerald-600 text-white font-bold text-[10px] px-2 py-0.5">
-                          ELEGÍVEL
+                    <TableCell className="text-center whitespace-nowrap">
+                      {revAct === null ? (
+                        <span className="text-muted-foreground text-[11px]">—</span>
+                      ) : fatPct !== null && fatPct >= 100 ? (
+                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5">
+                          🟢 BATEU META
                         </Badge>
-                      )}
-                      {isEligible === false && (
+                      ) : fatPct !== null && fatPct >= 90 ? (
+                        <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] px-2 py-0.5">
+                          🟢 ELEGÍVEL (≥90%)
+                        </Badge>
+                      ) : (
                         <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
-                          INELEGÍVEL
+                          🔴 NÃO BATEU META
                         </Badge>
                       )}
-                      {isEligible === null && <span className="text-muted-foreground text-[11px]">—</span>}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">{baseTc > 0 ? intFmt(baseTc) : "—"}</TableCell>
                     <TableCell className="text-right font-bold text-primary">{metaTc > 0 ? intFmt(metaTc) : "—"}</TableCell>
                     <TableCell className="text-right font-medium">{tcAct !== null ? intFmt(tcAct) : "—"}</TableCell>
-                    <TableCell className="text-right font-bold text-muted-foreground">
+                    <TableCell
+                      className={cn(
+                        "text-right font-bold",
+                        tcPct === null
+                          ? "text-muted-foreground"
+                          : tcPct >= 100
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-destructive",
+                      )}
+                    >
                       {tcPct !== null ? `${tcPct.toFixed(1)}%` : "—"}
+                    </TableCell>
+                    <TableCell className="text-center whitespace-nowrap">
+                      {tcAct === null ? (
+                        <span className="text-muted-foreground text-[11px]">—</span>
+                      ) : tcPct !== null && tcPct >= 100 ? (
+                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5">
+                          🟢 BATEU META
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
+                          🔴 NÃO BATEU META
+                        </Badge>
+                      )}
                     </TableCell>
                     {isMaster && (
                       <TableCell className="text-center">
@@ -1216,8 +1244,10 @@ function ImportWizard() {
   const nowYear = new Date().getFullYear();
   const fileRef = useRef<HTMLInputElement>(null);
   const importFn = useServerFn(importRevenueHistory);
+  const importActualFn = useServerFn(importActualRevenue);
   const { data: stores } = useStores();
 
+  const [importMode, setImportMode] = useState<"meta" | "realizado">("meta");
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
   const [sheets, setSheets] = useState<string[]>([]);
@@ -1227,7 +1257,7 @@ function ImportWizard() {
   const [raw, setRaw] = useState<Array<Record<string, unknown>>>([]);
   const [map, setMap] = useState<ColumnMap>({ store: "", month: "", receita: "", taxa: "", tc: "" });
   const [overrides, setOverrides] = useState<Record<string, string>>({});
-  const [baseYear, setBaseYear] = useState(nowYear - 1);
+  const [baseYear, setBaseYear] = useState(importMode === "meta" ? nowYear - 1 : nowYear);
   const [confirmConflicts, setConfirmConflicts] = useState<Array<{ store_id: string; month: number }> | null>(
     null,
   );
@@ -1280,28 +1310,55 @@ function ImportWizard() {
   const valid = rows.filter((r) => r.errors.length === 0 && !dups.has(`${r.storeId}-${r.month}`));
 
   const doImport = useMutation({
-    mutationFn: async (replace: boolean) =>
-      importFn({
-        data: {
-          base_year: baseYear,
-          replace,
-          source_file: fileName || null,
-          rows: valid.map((r) => ({
-            store_id: r.storeId!,
-            month: r.month!,
-            receita_vendas: Number(r.receita ?? 0),
-            taxa_servico: Number(r.taxa ?? 0),
-            tc: Number(r.tc ?? 0),
-          })),
-        },
-      }),
+    mutationFn: async (replace: boolean) => {
+      if (importMode === "meta") {
+        return importFn({
+          data: {
+            base_year: baseYear,
+            replace,
+            source_file: fileName || null,
+            rows: valid.map((r) => ({
+              store_id: r.storeId!,
+              month: r.month!,
+              receita_vendas: Number(r.receita ?? 0),
+              taxa_servico: Number(r.taxa ?? 0),
+              tc: Number(r.tc ?? 0),
+            })),
+          },
+        });
+      } else {
+        const res = await importActualFn({
+          data: {
+            year: baseYear,
+            source_file: fileName || null,
+            rows: valid.map((r) => ({
+              store_id: r.storeId!,
+              month: r.month!,
+              revenue_actual: Number(r.receita ?? 0) + Number(r.taxa ?? 0),
+              tc_actual: Number(r.tc ?? 0),
+            })),
+          },
+        });
+        return {
+          ok: true as const,
+          needsConfirmation: false as const,
+          conflicts: [],
+          imported: res.count,
+          goals: 0,
+        };
+      }
+    },
     onSuccess: (res) => {
       if (res.needsConfirmation) {
         setConfirmConflicts(res.conflicts);
         return;
       }
       setConfirmConflicts(null);
-      toast.success(`Importação concluída: ${res.imported} linha(s), ${res.goals} meta(s) geradas.`);
+      if (importMode === "meta") {
+        toast.success(`Importação para metas concluída: ${res.imported} linha(s) e ${res.goals} meta(s) geradas (+10%).`);
+      } else {
+        toast.success(`Importação do realizado concluída: ${res.imported} registro(s) atualizados.`);
+      }
       setStep("upload");
       setRaw([]);
       setHeaders([]);
@@ -1315,19 +1372,77 @@ function ImportWizard() {
 
   return (
     <div className="space-y-4">
+      {/* Seletor de Tipo de Importação */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Tipo de Importação</CardTitle>
+          <CardDescription>
+            Escolha se deseja importar o histórico para cálculo da meta ou o faturamento realizado do ano atual.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div
+              onClick={() => {
+                setImportMode("meta");
+                setBaseYear(nowYear - 1);
+              }}
+              className={cn(
+                "cursor-pointer rounded-lg border-2 p-4 transition-all hover:bg-muted/30",
+                importMode === "meta"
+                  ? "border-primary bg-primary/5 shadow-sm"
+                  : "border-border text-muted-foreground",
+              )}
+            >
+              <div className="flex items-center gap-2 font-bold text-sm text-foreground">
+                <FileSpreadsheet className={cn("size-4", importMode === "meta" && "text-primary")} />
+                <span>IMPORTAR DADOS PARA META</span>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Dados históricos do ano anterior ({nowYear - 1}) utilizados para calcular automaticamente a meta de {nowYear} (+10%).
+              </p>
+            </div>
+
+            <div
+              onClick={() => {
+                setImportMode("realizado");
+                setBaseYear(nowYear);
+              }}
+              className={cn(
+                "cursor-pointer rounded-lg border-2 p-4 transition-all hover:bg-muted/30",
+                importMode === "realizado"
+                  ? "border-primary bg-primary/5 shadow-sm"
+                  : "border-border text-muted-foreground",
+              )}
+            >
+              <div className="flex items-center gap-2 font-bold text-sm text-foreground">
+                <Upload className={cn("size-4", importMode === "realizado" && "text-primary")} />
+                <span>IMPORTAR FATURAMENTO REALIZADO</span>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Dados realizados do ano atual ({nowYear}) para confronto direto com a meta orçada e apuração de atingimento.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Seleção do Arquivo */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">1. Selecionar a planilha do ano anterior</CardTitle>
+          <CardTitle className="text-base">
+            1. Selecionar a planilha {importMode === "meta" ? "do ano anterior" : "do ano atual"}
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap items-end gap-3">
           <div className="space-y-1.5">
-            <Label>Ano base da planilha</Label>
+            <Label>{importMode === "meta" ? "Ano base (histórico anterior)" : "Ano de referência (realizado)"}</Label>
             <Select value={String(baseYear)} onValueChange={(v) => setBaseYear(Number(v))}>
               <SelectTrigger className="w-[140px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {[nowYear - 2, nowYear - 1, nowYear].map((y) => (
+                {[nowYear - 2, nowYear - 1, nowYear, nowYear + 1].map((y) => (
                   <SelectItem key={y} value={String(y)}>
                     {y}
                   </SelectItem>
@@ -1347,11 +1462,11 @@ function ImportWizard() {
             }}
           />
           <Button onClick={() => fileRef.current?.click()}>
-            <Upload className="size-4" /> Importar Excel
+            <Upload className="size-4 mr-1.5" /> Importar Excel
           </Button>
           {fileName && (
             <span className="flex items-center gap-2 text-sm text-muted-foreground">
-              <FileSpreadsheet className="size-4" /> {fileName} · {raw.length} linha(s)
+              <FileSpreadsheet className="size-4 text-primary" /> {fileName} · {raw.length} linha(s)
             </span>
           )}
           {sheets.length > 1 && (
@@ -1472,7 +1587,7 @@ function ImportWizard() {
               <CheckCircle2 className="size-4" />
               <AlertTitle>Planilha validada</AlertTitle>
               <AlertDescription>
-                {valid.length} linha(s) prontas para importar como ano base {baseYear}.
+                {valid.length} linha(s) prontas para importar como {importMode === "meta" ? `ano base ${baseYear} (Meta ${baseYear + 1})` : `realizado de ${baseYear}`}.
               </AlertDescription>
             </Alert>
           )}
@@ -1484,7 +1599,7 @@ function ImportWizard() {
                 onClick={() => doImport.mutate(false)}
                 disabled={valid.length === 0 || doImport.isPending}
               >
-                Confirmar importação
+                {importMode === "meta" ? "Confirmar Dados para Meta (+10%)" : "Confirmar Faturamento Realizado"}
               </Button>
             </CardHeader>
             <CardContent className="px-0">
@@ -1496,8 +1611,8 @@ function ImportWizard() {
                       <TableHead>Mês</TableHead>
                       <TableHead className="text-right">Receita de vendas</TableHead>
                       <TableHead className="text-right">Taxa de serviço</TableHead>
-                      <TableHead className="text-right">Faturamento base</TableHead>
-                      <TableHead className="text-right">TC</TableHead>
+                      <TableHead className="text-right">Faturamento total</TableHead>
+                      <TableHead className="text-right">TC (Pedidos)</TableHead>
                       <TableHead />
                     </TableRow>
                   </TableHeader>
@@ -1544,13 +1659,12 @@ function ImportWizard() {
                 .slice(0, 6)
                 .map((c) => `${storeName(c.store_id)} — ${MONTHS[c.month - 1]}`)
                 .join(", ")}
-              {(confirmConflicts?.length ?? 0) > 6 ? "…" : ""}. Substituir mantém o histórico registrado na
-              auditoria.
+              {(confirmConflicts?.length ?? 0) > 6 ? "…" : ""}. Ao substituir, os dados existentes serão atualizados sem gerar duplicidades.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => doImport.mutate(true)}>Substituir</AlertDialogAction>
+            <AlertDialogAction onClick={() => doImport.mutate(true)}>Atualizar Registros</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

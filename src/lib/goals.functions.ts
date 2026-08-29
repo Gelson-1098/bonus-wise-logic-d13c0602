@@ -181,6 +181,89 @@ export const generateGoals = createServerFn({ method: "POST" })
     return { ok: true, count, target_year: targetYear };
   });
 
+const actualRowSchema = z.object({
+  store_id: z.string().uuid(),
+  month: z.number().int().min(1).max(12),
+  revenue_actual: z.number().min(0),
+  tc_actual: z.number().min(0),
+});
+
+const importActualSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  rows: z.array(actualRowSchema).min(1),
+  source_file: z.string().nullable().optional(),
+});
+
+/** Importa faturamento realizado do ano atual para apuração de atingimento. */
+export const importActualRevenue = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => importActualSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await assertMaster(supabase);
+
+    let updatedCount = 0;
+    for (const r of data.rows) {
+      let { data: period } = await supabase
+        .from("bonus_periods")
+        .select("id")
+        .eq("store_id", r.store_id)
+        .eq("month", r.month)
+        .eq("year", data.year)
+        .maybeSingle();
+
+      if (!period) {
+        const { data: newPeriod, error: pErr } = await supabase
+          .from("bonus_periods")
+          .insert({
+            store_id: r.store_id,
+            month: r.month,
+            year: data.year,
+            status: "aberto",
+          })
+          .select("id")
+          .single();
+        if (pErr) continue;
+        period = newPeriod;
+      }
+
+      const { data: target } = await supabase
+        .from("store_targets")
+        .select("id")
+        .eq("period_id", period.id)
+        .maybeSingle();
+
+      if (target) {
+        await supabase
+          .from("store_targets")
+          .update({
+            revenue_actual: r.revenue_actual,
+            tc_actual: r.tc_actual,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", target.id);
+      } else {
+        await supabase.from("store_targets").insert({
+          period_id: period.id,
+          store_id: r.store_id,
+          revenue_actual: r.revenue_actual,
+          tc_actual: r.tc_actual,
+          target_calculated: 0,
+        });
+      }
+      updatedCount += 1;
+    }
+
+    await supabase.from("audit_logs").insert({
+      user_id: userId,
+      action: "importacao_realizado",
+      entity: "store_targets",
+      description: `Importação de faturamento realizado para ${data.year}: ${updatedCount} registros atualizados.`,
+    });
+
+    return { ok: true, count: updatedCount };
+  });
+
 async function generate(
   supabase: SupabaseLike,
   userId: string,
