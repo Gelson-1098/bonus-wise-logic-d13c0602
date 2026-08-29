@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  deduplicateStores,
   generateGoals,
   getGoalGrowth,
   importRevenueHistory,
@@ -187,6 +188,7 @@ type EditGoalPayload = {
 function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
   const qc = useQueryClient();
   const syncPdf = useServerFn(syncOfficialPdfGoals);
+  const dedupStoresFn = useServerFn(deduplicateStores);
   const nowYear = new Date().getFullYear();
   const [year, setYear] = useState(nowYear);
   const [metric, setMetric] = useState<"faturamento" | "tc">("faturamento");
@@ -231,6 +233,17 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
     return m;
   }, [actualsQuery.data]);
 
+  const dedupMutation = useMutation({
+    mutationFn: async () => dedupStoresFn({}),
+    onSuccess: (res) => {
+      toast.success("Lojas padronizadas com sucesso!", {
+        description: `${res.storesUpdated} lojas oficiais ajustadas e ${res.duplicatesRemoved} duplicidades removidas.`,
+      });
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => toast.error("Falha ao padronizar lojas", { description: e.message }),
+  });
+
   const syncPdfMutation = useMutation({
     mutationFn: async () => syncPdf({}),
     onSuccess: (res) => {
@@ -251,9 +264,24 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
     return m;
   }, [goalsQuery.data]);
 
-  // Lista de lojas ativas
+  // Lista de lojas ativas com deduplicação e padrão uniforme
   const activeStores = useMemo(() => {
-    return (stores ?? []).filter((s) => s.active);
+    const list = (stores ?? []).filter((s) => s.active);
+    const seen = new Set<string>();
+    const unique: typeof list = [];
+    for (const s of list) {
+      const key = (s.name || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/^sp\s+|^es\s+/, "")
+        .trim();
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(s);
+      }
+    }
+    return unique.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [stores]);
 
   // Totais por mês
@@ -331,14 +359,25 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
           </div>
 
           {isMaster ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
-                className="border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary"
+                size="sm"
+                className="border-border text-xs"
+                onClick={() => dedupMutation.mutate()}
+                disabled={dedupMutation.isPending}
+              >
+                <RefreshCw className={cn("size-3.5 mr-1.5", dedupMutation.isPending && "animate-spin")} />
+                {dedupMutation.isPending ? "Padronizando..." : "Padronizar Lojas"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold"
                 onClick={() => syncPdfMutation.mutate()}
                 disabled={syncPdfMutation.isPending}
               >
-                <Sparkles className="size-4 text-primary mr-1" />
+                <Sparkles className="size-3.5 text-primary mr-1.5" />
                 {syncPdfMutation.isPending ? "Sincronizando..." : "Carregar Orçamento Oficial do PDF"}
               </Button>
             </div>
@@ -349,6 +388,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
           )}
         </CardContent>
       </Card>
+
 
       {/* KPI Cards de Resumo */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

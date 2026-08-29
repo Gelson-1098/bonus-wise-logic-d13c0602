@@ -296,41 +296,183 @@ export const updateStoreGoalManual = createServerFn({ method: "POST" })
     return { ok: true, goal_id: data.goal_id };
   });
 
-/** Sincronização oficial dos dados do PDF (10 lojas x 7 meses = 70 registros auditados). */
+function normalizeText(text: string) {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Limpa e unifica lojas duplicadas, migrando os registros relacionados para a loja canônica. */
+export async function cleanupAndStandardizeStores(supabase: SupabaseLike, userId: string) {
+  const { CANONICAL_STORES } = await import("@/lib/official-pdf-data");
+
+  const { data: allStores, error: stErr } = await supabase
+    .from("stores")
+    .select("id, name, code, active, city, state");
+  if (stErr) throw new Error(stErr.message);
+
+  const canonicalStoreMap = new Map<string, string>(); // canonicalKey -> primaryStoreId
+  let duplicatesRemoved = 0;
+  let storesUpdated = 0;
+
+  for (const canonical of CANONICAL_STORES) {
+    const matching = (allStores ?? []).filter((s: { name: string; code: string | null }) => {
+      const normName = normalizeText(s.name || "");
+      const normCode = normalizeText(s.code || "");
+      if (normCode === normalizeText(canonical.code)) return true;
+      if (normName === normalizeText(canonical.name)) return true;
+      if (normName === canonical.key) return true;
+      return canonical.aliases.some((a) => normName.includes(a) || a.includes(normName));
+    });
+
+    let primary = matching.find((s: { code: string | null }) => s.code === canonical.code);
+    if (!primary && matching.length > 0) {
+      primary = matching[0];
+    }
+
+    if (primary) {
+      // Atualiza os dados da loja principal com o padrão oficial
+      await supabase
+        .from("stores")
+        .update({
+          name: canonical.name,
+          code: canonical.code,
+          city: canonical.city,
+          state: canonical.state,
+          active: true,
+        })
+        .eq("id", primary.id);
+      storesUpdated += 1;
+      canonicalStoreMap.set(canonical.key, primary.id);
+
+      // Limpa duplicatas
+      for (const dup of matching) {
+        if (dup.id === primary.id) continue;
+
+        // 1. Migra ou remove metas duplicadas
+        const { data: dupGoals } = await supabase.from("store_goals").select("id, year, month").eq("store_id", dup.id);
+        for (const dg of dupGoals ?? []) {
+          const { data: existG } = await supabase
+            .from("store_goals")
+            .select("id")
+            .eq("store_id", primary.id)
+            .eq("year", dg.year)
+            .eq("month", dg.month)
+            .maybeSingle();
+          if (existG) {
+            await supabase.from("store_goals").delete().eq("id", dg.id);
+          } else {
+            await supabase.from("store_goals").update({ store_id: primary.id }).eq("id", dg.id);
+          }
+        }
+
+        // 2. Migra ou remove histórico de faturamento duplicado
+        const { data: dupRev } = await supabase.from("revenue_history").select("id, year, month").eq("store_id", dup.id);
+        for (const dr of dupRev ?? []) {
+          const { data: existR } = await supabase
+            .from("revenue_history")
+            .select("id")
+            .eq("store_id", primary.id)
+            .eq("year", dr.year)
+            .eq("month", dr.month)
+            .maybeSingle();
+          if (existR) {
+            await supabase.from("revenue_history").delete().eq("id", dr.id);
+          } else {
+            await supabase.from("revenue_history").update({ store_id: primary.id }).eq("id", dr.id);
+          }
+        }
+
+        // 3. Migra vínculos de colaboradores
+        await supabase.from("employees").update({ store_id: primary.id }).eq("store_id", dup.id);
+
+        // 4. Migra acessos de usuários
+        const { data: dupUserStores } = await supabase.from("user_stores").select("user_id").eq("store_id", dup.id);
+        for (const us of dupUserStores ?? []) {
+          const { data: existUs } = await supabase
+            .from("user_stores")
+            .select("id")
+            .eq("store_id", primary.id)
+            .eq("user_id", us.user_id)
+            .maybeSingle();
+          if (existUs) {
+            await supabase.from("user_stores").delete().eq("store_id", dup.id).eq("user_id", us.user_id);
+          } else {
+            await supabase.from("user_stores").update({ store_id: primary.id }).eq("store_id", dup.id).eq("user_id", us.user_id);
+          }
+        }
+
+        // 5. Migra períodos e lançamentos
+        await supabase.from("bonus_periods").update({ store_id: primary.id }).eq("store_id", dup.id);
+        await supabase.from("employee_period_entries").update({ store_id: primary.id }).eq("store_id", dup.id);
+
+        // 6. Exclui a loja duplicada
+        await supabase.from("stores").delete().eq("id", dup.id);
+        duplicatesRemoved += 1;
+      }
+    } else {
+      // Se não existia nenhuma loja para este padrão, cria nova
+      const { data: created, error: cErr } = await supabase
+        .from("stores")
+        .insert({
+          name: canonical.name,
+          code: canonical.code,
+          city: canonical.city,
+          state: canonical.state,
+          active: true,
+        })
+        .select("id")
+        .single();
+      if (!cErr && created) {
+        canonicalStoreMap.set(canonical.key, created.id);
+        storesUpdated += 1;
+      }
+    }
+  }
+
+  // Desativa lojas legadas que não pertencem ao catálogo oficial
+  const canonicalIds = Array.from(canonicalStoreMap.values());
+  if (canonicalIds.length > 0) {
+    await supabase.from("stores").update({ active: false }).not("id", "in", `(${canonicalIds.join(",")})`);
+  }
+
+  await supabase.from("audit_logs").insert({
+    user_id: userId,
+    action: "padronizacao_lojas",
+    entity: "stores",
+    description: `Padronização e deduplicação de lojas concluída: ${storesUpdated} lojas oficiais ajustadas e ${duplicatesRemoved} duplicidades removidas.`,
+  });
+
+  return { canonicalStoreMap, duplicatesRemoved, storesUpdated };
+}
+
+/** Endpoint exclusivo do Master para limpar e padronizar lojas. */
+export const deduplicateStores = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    await assertMaster(supabase);
+    return cleanupAndStandardizeStores(supabase, userId);
+  });
+
+/** Sincronização oficial dos dados do PDF com padronização e deduplicação automática. */
 export const syncOfficialPdfGoals = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     await assertMaster(supabase);
 
-    const { OFFICIAL_PDF_DATA, OFFICIAL_PDF_STORES } = await import("@/lib/official-pdf-data");
+    const { OFFICIAL_PDF_DATA, CANONICAL_STORES } = await import("@/lib/official-pdf-data");
 
-    // 1. Garante que todas as lojas do PDF existam na tabela stores
-    const { data: existingStores, error: stErr } = await supabase
-      .from("stores")
-      .select("id, name");
-    if (stErr) throw new Error(stErr.message);
-
-    const storeMap = new Map<string, string>();
-    for (const s of existingStores ?? []) {
-      storeMap.set(s.name.trim().toUpperCase(), s.id);
-    }
-
-    for (const storeName of OFFICIAL_PDF_STORES) {
-      if (!storeMap.has(storeName)) {
-        const { data: newStore, error: insErr } = await supabase
-          .from("stores")
-          .insert({ name: storeName, active: true })
-          .select("id, name")
-          .single();
-        if (insErr) throw new Error(`Erro ao criar loja ${storeName}: ${insErr.message}`);
-        storeMap.set(storeName, newStore.id);
-      }
-    }
+    // 1. Padroniza e limpa duplicidades em stores
+    const { canonicalStoreMap } = await cleanupAndStandardizeStores(supabase, userId);
 
     // 2. Grava/atualiza os registros de faturamento base do ano anterior (2025)
     for (const item of OFFICIAL_PDF_DATA) {
-      const storeId = storeMap.get(item.storeName);
+      const storeId = canonicalStoreMap.get(item.canonicalKey);
       if (!storeId) continue;
 
       const { data: existRev } = await supabase
@@ -367,12 +509,12 @@ export const syncOfficialPdfGoals = createServerFn({ method: "POST" })
       user_id: userId,
       action: "sincronizacao_pdf_oficial",
       entity: "store_goals",
-      description: `Carga oficial do PDF concluída: 10 lojas sincronizadas, ${OFFICIAL_PDF_DATA.length} registros de base 2025 e ${generated} metas geradas para 2026 (+10%).`,
+      description: `Carga oficial do PDF concluída: 10 lojas oficiais padronizadas, ${OFFICIAL_PDF_DATA.length} registros de base 2025 e ${generated} metas geradas para 2026 (+10%).`,
     });
 
     return {
       ok: true,
-      storesCount: OFFICIAL_PDF_STORES.length,
+      storesCount: CANONICAL_STORES.length,
       recordsCount: OFFICIAL_PDF_DATA.length,
       goalsGenerated: generated,
     };
