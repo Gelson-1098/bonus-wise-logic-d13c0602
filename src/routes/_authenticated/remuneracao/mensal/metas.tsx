@@ -258,7 +258,8 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
 
   // Mapeamento: chave = "storeId-month" -> Goal
   const goalMap = useMemo(() => {
-    const m = new Map<string, (typeof goalsQuery.data)[number]>();
+    type GoalRow = NonNullable<typeof goalsQuery.data>[number];
+    const m = new Map<string, GoalRow>();
     for (const g of goalsQuery.data ?? []) {
       m.set(`${g.store_id}-${g.month}`, g);
     }
