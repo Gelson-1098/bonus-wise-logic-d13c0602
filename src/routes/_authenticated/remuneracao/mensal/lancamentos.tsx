@@ -543,8 +543,8 @@ function TargetCard({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-          <div className="text-xs text-muted-foreground">
-            * Atingindo <strong>{minTrigger}% ou mais</strong>, a loja torna-se elegível ao <strong>valor cheio do bônus</strong> (sem redução proporcional).
+          <div className="text-xs text-muted-foreground text-center w-full sm:w-auto sm:text-left">
+            Atingindo <strong>{minTrigger}% ou mais</strong>, a loja torna-se elegível ao <strong>valor cheio do bônus</strong> (sem redução proporcional).
           </div>
           {editable && (
             <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
@@ -696,80 +696,166 @@ function EntryDialog({
           </Alert>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-md border border-border">
+            <div className="rounded-md border border-border overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Indicador</TableHead>
-                    <TableHead>Meta</TableHead>
-                    <TableHead className="w-[110px]">Resultado</TableHead>
-                    <TableHead className="w-[170px]">Situação</TableHead>
+                  <TableRow className="bg-muted/30">
+                    <TableHead className="text-center">Indicador / Critério</TableHead>
+                    <TableHead className="text-center">Meta</TableHead>
+                    <TableHead className="text-center w-[180px]">Resultado / Situação</TableHead>
                     <TableHead className="text-right">Valor</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {criteria.map((c) => (
-                    <TableRow key={c.id}>
-                      <TableCell>
-                        <p className="font-medium">{c.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {c.category ?? "—"}
-                          {c.is_eliminatory && " · eliminatório"}
-                          {c.weight_pct !== null && ` · peso ${Number(c.weight_pct)}%`}
-                        </p>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {c.target_text ??
-                          (c.target_value !== null ? `${c.comparator ?? ""} ${c.target_value}${c.unit ?? ""}` : "—")}
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          disabled={!editable}
-                          value={state[c.id]?.result_value ?? ""}
-                          onChange={(e) =>
-                            setState((s) => ({
-                              ...s,
-                              [c.id]: {
-                                status: s[c.id]?.status ?? "nao_aplicavel",
-                                note: s[c.id]?.note ?? "",
-                                result_value: e.target.value === "" ? null : Number(e.target.value),
-                              },
-                            }))
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          disabled={!editable}
-                          value={state[c.id]?.status ?? "nao_aplicavel"}
-                          onValueChange={(v) =>
-                            setState((s) => ({
-                              ...s,
-                              [c.id]: {
-                                result_value: s[c.id]?.result_value ?? null,
-                                note: s[c.id]?.note ?? "",
-                                status: v as CriterionStatus,
-                              },
-                            }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="atingiu">Atingiu</SelectItem>
-                            <SelectItem value="nao_atingiu">Não atingiu</SelectItem>
-                            <SelectItem value="nao_aplicavel">Não lançado</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {c.is_eliminatory ? "—" : brl(c.value_brl)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {criteria.map((c) => {
+                    const isBinary =
+                      (c.target_value === null || c.target_value === undefined) &&
+                      (c.unit === null || c.unit === "") &&
+                      (c.comparator === null || c.comparator === "");
+                    const currentStatus = state[c.id]?.status ?? "nao_aplicavel";
+
+                    return (
+                      <TableRow key={c.id} className={cn(
+                        currentStatus === "atingiu" && "bg-emerald-50/40 dark:bg-emerald-950/20",
+                        currentStatus === "nao_atingiu" && "bg-red-50/40 dark:bg-red-950/20",
+                      )}>
+                        {/* Indicador — centralizado */}
+                        <TableCell className="text-center">
+                          <p className="font-medium">{c.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {c.category ?? "—"}
+                            {c.is_eliminatory && " · eliminatório"}
+                            {c.weight_pct !== null && ` · peso ${Number(c.weight_pct)}%`}
+                          </p>
+                        </TableCell>
+
+                        {/* Meta — centralizada */}
+                        <TableCell className="text-center text-xs text-muted-foreground">
+                          {c.target_text ??
+                            (c.target_value !== null ? `${c.comparator ?? ""} ${c.target_value}${c.unit ?? ""}` : "—")}
+                        </TableCell>
+
+                        {/* Resultado / Situação */}
+                        <TableCell>
+                          {isBinary ? (
+                            // Critério binário → botões SIM / NÃO
+                            <div className="flex flex-col items-center gap-2">
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  disabled={!editable}
+                                  onClick={() =>
+                                    setState((s) => ({
+                                      ...s,
+                                      [c.id]: {
+                                        result_value: 1,
+                                        note: s[c.id]?.note ?? "",
+                                        status: "atingiu",
+                                      },
+                                    }))
+                                  }
+                                  className={cn(
+                                    "px-4 py-1.5 rounded-md text-sm font-bold border-2 transition-all",
+                                    currentStatus === "atingiu"
+                                      ? "bg-emerald-600 border-emerald-600 text-white shadow-sm"
+                                      : "border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30",
+                                    !editable && "opacity-50 cursor-not-allowed",
+                                  )}
+                                >
+                                  ✓ SIM
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!editable}
+                                  onClick={() =>
+                                    setState((s) => ({
+                                      ...s,
+                                      [c.id]: {
+                                        result_value: 0,
+                                        note: s[c.id]?.note ?? "",
+                                        status: "nao_atingiu",
+                                      },
+                                    }))
+                                  }
+                                  className={cn(
+                                    "px-4 py-1.5 rounded-md text-sm font-bold border-2 transition-all",
+                                    currentStatus === "nao_atingiu"
+                                      ? "bg-red-600 border-red-600 text-white shadow-sm"
+                                      : "border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30",
+                                    !editable && "opacity-50 cursor-not-allowed",
+                                  )}
+                                >
+                                  ✕ NÃO
+                                </button>
+                              </div>
+                              {currentStatus === "nao_aplicavel" && (
+                                <span className="text-[10px] text-muted-foreground">Não lançado</span>
+                              )}
+                            </div>
+                          ) : (
+                            // Critério quantitativo → input numérico + select de situação
+                            <div className="flex flex-col gap-1.5">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                disabled={!editable}
+                                placeholder="Valor"
+                                value={state[c.id]?.result_value ?? ""}
+                                onChange={(e) =>
+                                  setState((s) => ({
+                                    ...s,
+                                    [c.id]: {
+                                      status: s[c.id]?.status ?? "nao_aplicavel",
+                                      note: s[c.id]?.note ?? "",
+                                      result_value: e.target.value === "" ? null : Number(e.target.value),
+                                    },
+                                  }))
+                                }
+                              />
+                              <Select
+                                disabled={!editable}
+                                value={currentStatus}
+                                onValueChange={(v) =>
+                                  setState((s) => ({
+                                    ...s,
+                                    [c.id]: {
+                                      result_value: s[c.id]?.result_value ?? null,
+                                      note: s[c.id]?.note ?? "",
+                                      status: v as CriterionStatus,
+                                    },
+                                  }))
+                                }
+                              >
+                                <SelectTrigger className={cn(
+                                  "text-xs h-7",
+                                  currentStatus === "atingiu" && "border-emerald-500 text-emerald-700 dark:text-emerald-400",
+                                  currentStatus === "nao_atingiu" && "border-red-500 text-red-700 dark:text-red-400",
+                                )}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="atingiu">✓ Atingiu</SelectItem>
+                                  <SelectItem value="nao_atingiu">✕ Não atingiu</SelectItem>
+                                  <SelectItem value="nao_aplicavel">— Não lançado</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                        </TableCell>
+
+                        {/* Valor do critério */}
+                        <TableCell className="text-right">
+                          <span className={cn(
+                            "font-semibold",
+                            currentStatus === "atingiu" && !c.is_eliminatory && "text-emerald-600 dark:text-emerald-400",
+                            currentStatus === "nao_atingiu" && c.is_eliminatory && "text-red-600 dark:text-red-400",
+                          )}>
+                            {c.is_eliminatory ? "—" : brl(c.value_brl)}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
