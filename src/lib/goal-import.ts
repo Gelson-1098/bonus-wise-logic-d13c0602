@@ -113,14 +113,27 @@ export const COLUMN_HINTS: Record<keyof ColumnMap, string[]> = {
 };
 
 export function normalizeStoreName(name: string) {
-  return name
+  // Remove acentos e converte para minúsculas
+  let s = name
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/^(sp|es|loja|restaurante|filial|unidade)\s+/i, "")
-    .replace(/\s+(sp|es|loja)$/i, "")
-    .replace(/[^a-z0-9]+/g, " ")
     .trim();
+
+  // Remove prefixos de estado/tipo iterativamente
+  // Garante que "SP VILA CLEMENTINO" → "vila clementino"
+  const PREFIX_RE = /^(sp|es|rj|mg|pr|sc|ba|ce|go|df|rs|pe|am|pa|ma|al|pi|pb|rn|se|ac|ap|ro|rr|to|ms|mt)\s+[-–]?\s*/;
+  const TYPE_RE   = /^(loja|restaurante|filial|unidade|store)\s+/;
+  const SUFFIX_RE = /\s+(sp|es|rj|mg|loja)\s*$/;
+
+  // Aplica remoções até estabilizar (sem mais prefixos)
+  let prev = "";
+  while (prev !== s) {
+    prev = s;
+    s = s.replace(PREFIX_RE, "").replace(TYPE_RE, "").replace(SUFFIX_RE, "").trim();
+  }
+
+  return s.replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 export function matchStore(

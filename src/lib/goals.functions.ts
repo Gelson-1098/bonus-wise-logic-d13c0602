@@ -358,6 +358,8 @@ export const updateStoreGoalManual = createServerFn({ method: "POST" })
         meta_faturamento: data.meta_faturamento,
         meta_tc: data.meta_tc,
         version: Number(prev.version) + 1,
+        is_manual_override: true,
+        manual_reason: data.reason.trim(),
         updated_at: new Date().toISOString(),
       })
       .eq("id", data.goal_id);

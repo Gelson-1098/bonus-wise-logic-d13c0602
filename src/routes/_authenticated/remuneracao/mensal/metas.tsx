@@ -840,15 +840,37 @@ function EditGoalModal({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="grid gap-3 sm:grid-cols-2 rounded-lg border bg-muted/20 p-3 text-xs">
-            <div>
-              <span className="text-muted-foreground">Base FAT Ano Anterior:</span>
-              <p className="font-semibold text-sm">{brl(payload.faturamentoBase)}</p>
+          {/* Fluxo visual: META IMPORTADA → GERENTE ALTERA */}
+          <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-3 text-xs space-y-2">
+            <p className="font-semibold text-amber-800 dark:text-amber-300 text-[11px] uppercase tracking-wide">
+              Fluxo de Meta — {payload.storeName}
+            </p>
+            <div className="grid gap-2 sm:grid-cols-4 items-center text-center">
+              <div className="space-y-0.5">
+                <p className="text-muted-foreground">Base FAT {payload.year - 1}</p>
+                <p className="font-semibold text-sm">{brl(payload.faturamentoBase)}</p>
+              </div>
+              <div className="text-muted-foreground text-lg font-light">→</div>
+              <div className="space-y-0.5 col-span-2 rounded border border-primary/30 bg-primary/5 px-2 py-1">
+                <p className="text-muted-foreground">Meta Gerada (+10%) — valor importado</p>
+                <p className="font-bold text-sm text-primary">{brl(payload.metaFaturamento)}</p>
+              </div>
             </div>
-            <div>
-              <span className="text-muted-foreground">Base TC Ano Anterior:</span>
-              <p className="font-semibold text-sm">{intFmt(payload.tcBase)}</p>
+            <div className="grid gap-2 sm:grid-cols-4 items-center text-center">
+              <div className="space-y-0.5">
+                <p className="text-muted-foreground">Base TC {payload.year - 1}</p>
+                <p className="font-semibold text-sm">{intFmt(payload.tcBase)}</p>
+              </div>
+              <div className="text-muted-foreground text-lg font-light">→</div>
+              <div className="space-y-0.5 col-span-2 rounded border border-primary/30 bg-primary/5 px-2 py-1">
+                <p className="text-muted-foreground">Meta TC Gerada (+10%) — valor importado</p>
+                <p className="font-bold text-sm text-primary">{intFmt(payload.metaTc)}</p>
+              </div>
             </div>
+            <p className="text-[10px] text-muted-foreground pt-1">
+              ⚠️ O faturamento <strong>realizado</strong> importado não é alterado por esta edição.
+              Apenas a <strong>meta orçada</strong> será atualizada.
+            </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
