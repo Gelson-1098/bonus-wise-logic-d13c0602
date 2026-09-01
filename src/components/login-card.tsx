@@ -61,31 +61,41 @@ export function LoginCard() {
   }
 
   return (
-    <Card className="w-full max-w-md border-border/70 shadow-lg">
-      <CardHeader>
-        <CardTitle className="text-xl">Acesso ao PRISMA</CardTitle>
-        <CardDescription>
-          Inteligência para gestão e performance — perfis Master, Treinador e Gerente.
+    <Card className="w-full max-w-sm border-border/60 shadow-xl">
+      <CardHeader className="pb-4 text-center space-y-1">
+        <CardTitle className="text-3xl font-black tracking-tight">PRIME</CardTitle>
+        <CardDescription className="text-xs text-muted-foreground">
+          Gestão de metas e performance
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="email">E-mail</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Label htmlFor="email" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">E-mail</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="seu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && signIn()}
+              className="h-11"
+            />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="senha">Senha</Label>
+            <Label htmlFor="senha" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Senha</Label>
             <Input
               id="senha"
               type="password"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && signIn()}
+              className="h-11"
             />
           </div>
-          <Button className="w-full" disabled={loading} onClick={signIn}>
-            Entrar
+          <Button className="w-full h-11 text-sm font-bold tracking-wide uppercase" disabled={loading} onClick={signIn}>
+            {loading ? "Entrando…" : "ENTRAR"}
           </Button>
           <button
             type="button"
@@ -93,19 +103,16 @@ export function LoginCard() {
             disabled={recovering}
             className="w-full text-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            Esqueci minha senha
+            {recovering ? "Enviando…" : "Esqueci minha senha"}
           </button>
         </div>
 
-        <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
           <span className="h-px flex-1 bg-border" /> ou <span className="h-px flex-1 bg-border" />
         </div>
-        <Button variant="outline" className="w-full" onClick={google}>
+        <Button variant="outline" className="w-full h-10" onClick={google}>
           Continuar com Google
         </Button>
-        <p className="mt-4 text-center text-xs text-muted-foreground">
-          Os acessos são criados pela Administração. Não há autocadastro.
-        </p>
       </CardContent>
     </Card>
   );
