@@ -100,6 +100,32 @@ export const CANONICAL_STORES: CanonicalStore[] = [
     state: "SP",
     aliases: ["vila clementino", "sp vila clementino", "clementino", "vila clementino sp"],
   },
+  {
+    key: "spoleto",
+    name: "Spoleto",
+    code: "SPL",
+    city: "São Paulo",
+    state: "SP",
+    aliases: ["spoleto", "spoleto sp", "sp spoleto", "restaurante spoleto", "loja spoleto"],
+  },
+  {
+    key: "aeroporto guarulhos",
+    name: "Aeroporto de Guarulhos",
+    code: "AGR",
+    city: "Guarulhos",
+    state: "SP",
+    aliases: [
+      "aeroporto de guarulhos",
+      "aeroporto guarulhos",
+      "guarulhos aeroporto",
+      "aeroporto internacional de guarulhos",
+      "gru",
+      "gru airport",
+      "aeroporto gru",
+      "dominos gru",
+      "domino s gru",
+    ],
+  },
 ];
 
 export const OFFICIAL_PDF_STORES = CANONICAL_STORES.map((s) => s.name);
