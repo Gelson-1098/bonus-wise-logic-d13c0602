@@ -437,54 +437,69 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
         </Card>
       </div>
 
-      {/* Tabela Matriz Consolidada */}
+      {/* Tabela Gerencial de Metas */}
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <div>
             <CardTitle className="text-base font-bold flex items-center gap-2">
               <FileText className="size-4 text-primary" />
               <span>
-                Orçamento Oficial de Metas {year} — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Clientes)"}
+                Painel de Metas {year} — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Clientes)"}
               </span>
             </CardTitle>
             <CardDescription>
-              Valores calculados com base no ano anterior ({year - 1}) + 10%. Clique na loja para expandir o detalhamento completo.
+              ORÇADO = Meta oficial · REALIZADO = Faturamento apurado · GAP = Realizado − Orçado · Clique na loja para detalhes mensais
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="px-0">
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40 font-semibold">
-                  <TableHead className="w-[200px]">Loja</TableHead>
-                  {PDF_MONTHS.map((pm) => (
-                    <TableHead key={pm.month} className="text-right">
-                      {pm.label}
-                    </TableHead>
-                  ))}
-                  <TableHead className="text-right font-bold text-primary">TOTAL PERÍODO</TableHead>
-                  <TableHead className="text-center w-[100px]">Ações</TableHead>
+              <TableHeader className="sticky top-0 z-10 bg-background">
+                <TableRow className="bg-muted/50 font-bold text-xs uppercase tracking-wide">
+                  <TableHead className="w-[200px]">LOJA</TableHead>
+                  <TableHead className="text-right text-primary">ORÇADO</TableHead>
+                  <TableHead className="text-right">REALIZADO</TableHead>
+                  <TableHead className="text-right">GAP</TableHead>
+                  <TableHead className="text-center">STATUS</TableHead>
+                  <TableHead className="text-center w-[90px] text-muted-foreground font-normal normal-case text-xs">Detalhar</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loadingStores && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-6 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
                       Carregando orçamento...
                     </TableCell>
                   </TableRow>
                 )}
                 {!loadingStores && activeStores.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-6 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
                       Nenhuma loja ativa cadastrada.
                     </TableCell>
                   </TableRow>
                 )}
                 {activeStores.map((s) => {
-                  let storeTotal = 0;
                   const isExpanded = expandedStoreId === s.id;
+
+                  // Calcula totais da loja no período
+                  let storeOrcado = 0;
+                  let storeRealizado = 0;
+                  let storeHasRealizado = false;
+                  for (const pm of PDF_MONTHS) {
+                    const goal = goalMap.get(`${s.id}-${pm.month}`);
+                    const actual = actualMap.get(`${s.id}-${pm.month}`);
+                    storeOrcado += goal
+                      ? metric === "faturamento" ? Number(goal.meta_faturamento) : Number(goal.meta_tc)
+                      : 0;
+                    const rev = metric === "faturamento"
+                      ? actual?.revenue_actual
+                      : actual?.tc_actual;
+                    if (rev != null) { storeRealizado += Number(rev); storeHasRealizado = true; }
+                  }
+                  const storeGap = storeHasRealizado && storeOrcado > 0 ? storeRealizado - storeOrcado : null;
+                  const storeBateu = storeHasRealizado && storeOrcado > 0 ? storeRealizado >= storeOrcado : null;
 
                   return (
                     <ReactFragment key={s.id}>
@@ -492,54 +507,72 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                         className={cn(
                           "cursor-pointer hover:bg-muted/30 transition-colors",
                           isExpanded && "bg-muted/20 border-l-4 border-l-primary",
+                          storeBateu === true && !isExpanded && "bg-emerald-50/30 dark:bg-emerald-950/10",
+                          storeBateu === false && !isExpanded && "bg-red-50/30 dark:bg-red-950/10",
                         )}
                         onClick={() => setExpandedStoreId(isExpanded ? null : s.id)}
                       >
+                        {/* LOJA */}
                         <TableCell className="font-semibold flex items-center gap-2">
                           {isExpanded ? (
-                            <ChevronDown className="size-4 text-primary" />
+                            <ChevronDown className="size-4 text-primary shrink-0" />
                           ) : (
-                            <ChevronRight className="size-4 text-muted-foreground" />
+                            <ChevronRight className="size-4 text-muted-foreground shrink-0" />
                           )}
                           <span>{s.name}</span>
                         </TableCell>
 
-                        {PDF_MONTHS.map((pm) => {
-                          const goal = goalMap.get(`${s.id}-${pm.month}`);
-                          const val = goal
-                            ? metric === "faturamento"
-                              ? Number(goal.meta_faturamento)
-                              : Number(goal.meta_tc)
-                            : 0;
-                          storeTotal += val;
-
-                          return (
-                            <TableCell key={pm.month} className="text-right font-medium text-xs sm:text-sm">
-                              {val > 0 ? (
-                                metric === "faturamento" ? (
-                                  brl(val)
-                                ) : (
-                                  intFmt(val)
-                                )
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                          );
-                        })}
-
+                        {/* ORÇADO */}
                         <TableCell className="text-right font-bold text-primary">
-                          {storeTotal > 0 ? (
-                            metric === "faturamento" ? (
-                              brl(storeTotal)
-                            ) : (
-                              intFmt(storeTotal)
-                            )
+                          {storeOrcado > 0
+                            ? metric === "faturamento" ? brl(storeOrcado) : intFmt(storeOrcado)
+                            : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+
+                        {/* REALIZADO */}
+                        <TableCell className="text-right font-semibold">
+                          {storeHasRealizado ? (
+                            <span className={cn(
+                              storeBateu === true && "text-emerald-700 dark:text-emerald-400",
+                              storeBateu === false && "text-red-700 dark:text-red-400",
+                            )}>
+                              {metric === "faturamento" ? brl(storeRealizado) : intFmt(storeRealizado)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">Não lançado</span>
+                          )}
+                        </TableCell>
+
+                        {/* GAP */}
+                        <TableCell className="text-right font-bold">
+                          {storeGap !== null ? (
+                            <span className={storeGap >= 0
+                              ? "text-emerald-700 dark:text-emerald-400"
+                              : "text-red-700 dark:text-red-400"}>
+                              {storeGap >= 0 ? "+" : ""}
+                              {metric === "faturamento" ? brl(storeGap) : intFmt(storeGap)}
+                            </span>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
 
+                        {/* STATUS */}
+                        <TableCell className="text-center">
+                          {storeBateu === null ? (
+                            <span className="text-muted-foreground text-xs">Aguardando</span>
+                          ) : storeBateu ? (
+                            <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5 shadow-sm">
+                              🟢 META BATIDA
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
+                              🔴 NÃO BATIDA
+                            </Badge>
+                          )}
+                        </TableCell>
+
+                        {/* DETALHAR */}
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           <Button
                             variant="ghost"
@@ -547,15 +580,15 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                             className="h-7 text-xs"
                             onClick={() => setExpandedStoreId(isExpanded ? null : s.id)}
                           >
-                            {isExpanded ? "Ocultar" : "Detalhar"}
+                            {isExpanded ? "Ocultar" : "Ver meses"}
                           </Button>
                         </TableCell>
                       </TableRow>
 
-                      {/* Linha Expandida com Detalhamento Completo da Loja */}
+                      {/* Detalhamento mês a mês */}
                       {isExpanded && (
                         <TableRow className="bg-muted/10">
-                          <TableCell colSpan={10} className="p-4">
+                          <TableCell colSpan={6} className="p-4">
                             <StoreDetailCard
                               storeId={s.id}
                               storeName={s.name}
@@ -573,24 +606,61 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                 })}
 
                 {/* Linha de Totais Gerais */}
-                {activeStores.length > 0 && (
-                  <TableRow className="bg-muted/50 font-bold border-t-2">
-                    <TableCell>TOTAL CONSOLIDADO</TableCell>
-                    {PDF_MONTHS.map((pm) => {
-                      const mTot = monthlyTotals[pm.month];
-                      const val = metric === "faturamento" ? mTot?.metaFat ?? 0 : mTot?.metaTc ?? 0;
-                      return (
-                        <TableCell key={pm.month} className="text-right font-bold">
-                          {val > 0 ? (metric === "faturamento" ? brl(val) : intFmt(val)) : "—"}
-                        </TableCell>
-                      );
-                    })}
-                    <TableCell className="text-right font-extrabold text-primary">
-                      {metric === "faturamento" ? brl(totalPeriodMeta.metaFat) : intFmt(totalPeriodMeta.metaTc)}
-                    </TableCell>
-                    <TableCell />
-                  </TableRow>
-                )}
+                {activeStores.length > 0 && (() => {
+                  let grandOrcado = 0;
+                  let grandRealizado = 0;
+                  let grandHasRealizado = false;
+                  for (const pm of PDF_MONTHS) {
+                    const mTot = monthlyTotals[pm.month];
+                    grandOrcado += metric === "faturamento" ? mTot?.metaFat ?? 0 : mTot?.metaTc ?? 0;
+                  }
+                  for (const p of actualsQuery.data ?? []) {
+                    const t = p.store_targets as unknown as { revenue_actual: number | null; tc_actual: number | null } | null;
+                    const val = metric === "faturamento" ? t?.revenue_actual : t?.tc_actual;
+                    if (val != null) { grandRealizado += Number(val); grandHasRealizado = true; }
+                  }
+                  const grandGap = grandHasRealizado && grandOrcado > 0 ? grandRealizado - grandOrcado : null;
+                  const grandBateu = grandHasRealizado && grandOrcado > 0 ? grandRealizado >= grandOrcado : null;
+                  return (
+                    <TableRow className="bg-muted/60 font-extrabold border-t-2 text-sm">
+                      <TableCell className="font-extrabold uppercase tracking-wide text-xs">TOTAL CONSOLIDADO</TableCell>
+                      <TableCell className="text-right font-extrabold text-primary">
+                        {grandOrcado > 0 ? (metric === "faturamento" ? brl(grandOrcado) : intFmt(grandOrcado)) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-extrabold">
+                        {grandHasRealizado ? (
+                          <span className={cn(
+                            grandBateu === true && "text-emerald-700 dark:text-emerald-400",
+                            grandBateu === false && "text-red-700 dark:text-red-400",
+                          )}>
+                            {metric === "faturamento" ? brl(grandRealizado) : intFmt(grandRealizado)}
+                          </span>
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-extrabold">
+                        {grandGap !== null ? (
+                          <span className={grandGap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}>
+                            {grandGap >= 0 ? "+" : ""}{metric === "faturamento" ? brl(grandGap) : intFmt(grandGap)}
+                          </span>
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {grandBateu === null ? (
+                          <span className="text-muted-foreground text-xs">Aguardando</span>
+                        ) : grandBateu ? (
+                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3 py-1 shadow">
+                            🟢 META BATIDA
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive" className="font-extrabold text-[11px] px-3 py-1">
+                            🔴 NÃO BATIDA
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell />
+                    </TableRow>
+                  );
+                })()}
               </TableBody>
             </Table>
           </div>
@@ -636,21 +706,45 @@ function StoreDetailCard({
   isMaster: boolean;
   onEditGoal: (payload: EditGoalPayload) => void;
 }) {
+  // Acumula totais anuais
+  let totalOrcado = 0;
+  let totalRealizado = 0;
+  let hasRealizado = false;
+
+  const rows = PDF_MONTHS.map((pm) => {
+    const goal = goalMap.get(`${storeId}-${pm.month}`);
+    const actual = actualMap.get(`${storeId}-${pm.month}`);
+
+    const orcado = goal ? Number(goal.meta_faturamento) : 0;
+    const realizado = actual?.revenue_actual != null ? Number(actual.revenue_actual) : null;
+    const gap = realizado !== null && orcado > 0 ? realizado - orcado : null;
+    const pct = orcado > 0 && realizado !== null ? (realizado / orcado) * 100 : null;
+    const bateu = realizado !== null && orcado > 0 ? realizado >= orcado : null;
+
+    totalOrcado += orcado;
+    if (realizado !== null) { totalRealizado += realizado; hasRealizado = true; }
+
+    return { pm, goal, orcado, realizado, gap, pct, bateu };
+  });
+
+  const totalGap = hasRealizado ? totalRealizado - totalOrcado : null;
+  const totalBateu = hasRealizado && totalOrcado > 0 ? totalRealizado >= totalOrcado : null;
+
   return (
     <Card className="border shadow-none bg-card">
-      <CardHeader className="pb-3 flex-row items-center justify-between">
+      <CardHeader className="pb-2 flex-row items-center justify-between">
         <div>
           <CardTitle className="text-sm font-bold flex items-center gap-2">
             <Building2 className="size-4 text-primary" />
-            <span>Comparativo Oficial {year - 1} → {year} — {storeName}</span>
+            <span>{storeName} — Acompanhamento de Metas {year}</span>
           </CardTitle>
           <CardDescription className="text-xs">
-            Meta {year} = Realizado {year - 1} + 10% · Confronto com Realizado {year} e Status da Meta
+            ORÇADO = Meta oficial ({year}) · REALIZADO = Faturamento apurado · GAP = Realizado − Orçado
           </CardDescription>
         </div>
         {!isMaster && (
           <Badge variant="outline" className="text-xs bg-muted/40">
-            🔒 Meta Fixa do Orçamento
+            🔒 Meta Fixa
           </Badge>
         )}
       </CardHeader>
@@ -658,132 +752,157 @@ function StoreDetailCard({
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="text-xs bg-muted/40 font-semibold">
-                <TableHead>Mês</TableHead>
-                <TableHead className="text-right">FAT {year - 1}</TableHead>
-                <TableHead className="text-right font-bold text-primary">Meta FAT {year} (+10%)</TableHead>
-                <TableHead className="text-right">FAT Realizado {year}</TableHead>
-                <TableHead className="text-right">% Ating. FAT</TableHead>
-                <TableHead className="text-center">Status Meta FAT</TableHead>
-                <TableHead className="text-right">Pedidos {year - 1}</TableHead>
-                <TableHead className="text-right font-bold text-primary">Meta TC {year} (+10%)</TableHead>
-                <TableHead className="text-right">TC Realizado {year}</TableHead>
-                <TableHead className="text-right">% Ating. TC</TableHead>
-                <TableHead className="text-center">Status Meta TC</TableHead>
-                {isMaster && <TableHead className="text-center">Ações Master</TableHead>}
+              <TableRow className="bg-muted/50 text-xs font-bold sticky top-0 z-10">
+                <TableHead className="text-center font-bold">PERÍODO</TableHead>
+                <TableHead className="text-right font-bold text-primary">ORÇADO</TableHead>
+                <TableHead className="text-right font-bold">REALIZADO</TableHead>
+                <TableHead className="text-right font-bold">GAP</TableHead>
+                <TableHead className="text-center font-bold">STATUS</TableHead>
+                {isMaster && <TableHead className="text-center text-muted-foreground font-normal text-[10px]">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {PDF_MONTHS.map((pm) => {
-                const goal = goalMap.get(`${storeId}-${pm.month}`);
-                const actual = actualMap.get(`${storeId}-${pm.month}`);
+              {rows.map(({ pm, goal, orcado, realizado, gap, pct, bateu }) => (
+                <TableRow
+                  key={pm.month}
+                  className={cn(
+                    "text-xs hover:bg-muted/20 transition-colors",
+                    bateu === true && "bg-emerald-50/30 dark:bg-emerald-950/10",
+                    bateu === false && "bg-red-50/30 dark:bg-red-950/10",
+                  )}
+                >
+                  {/* PERÍODO */}
+                  <TableCell className="text-center font-semibold text-xs">
+                    {pm.full}
+                  </TableCell>
 
-                const baseFat = goal ? Number(goal.faturamento_base_ano_anterior) : 0;
-                const metaFat = goal ? Number(goal.meta_faturamento) : 0;
-                const revAct = actual?.revenue_actual != null ? Number(actual.revenue_actual) : null;
-                const fatPct = metaFat > 0 && revAct !== null ? (revAct / metaFat) * 100 : null;
+                  {/* ORÇADO */}
+                  <TableCell className="text-right font-bold text-primary text-xs">
+                    {orcado > 0 ? brl(orcado) : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
 
-                const baseTc = goal ? Number(goal.tc_ano_anterior) : 0;
-                const metaTc = goal ? Number(goal.meta_tc) : 0;
-                const tcAct = actual?.tc_actual != null ? Number(actual.tc_actual) : null;
-                const tcPct = metaTc > 0 && tcAct !== null ? (tcAct / metaTc) * 100 : null;
-
-                return (
-                  <TableRow key={pm.month} className="text-xs hover:bg-muted/20">
-                    <TableCell className="font-semibold">{pm.full}</TableCell>
-                    <TableCell className="text-right text-muted-foreground">{baseFat > 0 ? brl(baseFat) : "—"}</TableCell>
-                    <TableCell className="text-right font-bold text-primary">{metaFat > 0 ? brl(metaFat) : "—"}</TableCell>
-                    <TableCell className="text-right font-medium">{revAct !== null ? brl(revAct) : "—"}</TableCell>
-                    <TableCell
-                      className={cn(
-                        "text-right font-bold",
-                        fatPct === null
-                          ? "text-muted-foreground"
-                          : fatPct >= 100
-                            ? "text-emerald-600 dark:text-emerald-400 font-extrabold"
-                            : fatPct >= 90
-                              ? "text-emerald-500 font-bold"
-                              : "text-destructive font-bold",
-                      )}
-                    >
-                      {fatPct !== null ? `${fatPct.toFixed(1)}%` : "—"}
-                    </TableCell>
-                    <TableCell className="text-center whitespace-nowrap">
-                      {revAct === null ? (
-                        <span className="text-muted-foreground text-[11px]">—</span>
-                      ) : fatPct !== null && fatPct >= 100 ? (
-                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5 shadow-sm">
-                          🟢 BATEU META (100%+)
-                        </Badge>
-                      ) : fatPct !== null && fatPct >= 90 ? (
-                        <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] px-2 py-0.5">
-                          🟢 ELEGÍVEL (≥90%)
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
-                          🔴 NÃO BATEU META
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">{baseTc > 0 ? intFmt(baseTc) : "—"}</TableCell>
-                    <TableCell className="text-right font-bold text-primary">{metaTc > 0 ? intFmt(metaTc) : "—"}</TableCell>
-                    <TableCell className="text-right font-medium">{tcAct !== null ? intFmt(tcAct) : "—"}</TableCell>
-                    <TableCell
-                      className={cn(
-                        "text-right font-bold",
-                        tcPct === null
-                          ? "text-muted-foreground"
-                          : tcPct >= 100
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-destructive",
-                      )}
-                    >
-                      {tcPct !== null ? `${tcPct.toFixed(1)}%` : "—"}
-                    </TableCell>
-                    <TableCell className="text-center whitespace-nowrap">
-                      {tcAct === null ? (
-                        <span className="text-muted-foreground text-[11px]">—</span>
-                      ) : tcPct !== null && tcPct >= 100 ? (
-                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5">
-                          🟢 BATEU META
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
-                          🔴 NÃO BATEU META
-                        </Badge>
-                      )}
-                    </TableCell>
-                    {isMaster && (
-                      <TableCell className="text-center">
-                        {goal ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 text-[11px] px-2 text-primary hover:text-primary"
-                            onClick={() =>
-                              onEditGoal({
-                                goalId: goal.id,
-                                storeName,
-                                storeId,
-                                year,
-                                month: pm.month,
-                                faturamentoBase: baseFat,
-                                metaFaturamento: metaFat,
-                                tcBase: baseTc,
-                                metaTc,
-                              })
-                            }
-                          >
-                            <Edit3 className="size-3 mr-1" /> Editar
-                          </Button>
-                        ) : (
-                          <span className="text-muted-foreground text-[11px]">Sem meta</span>
-                        )}
-                      </TableCell>
+                  {/* REALIZADO */}
+                  <TableCell className="text-right font-semibold text-xs">
+                    {realizado !== null ? (
+                      <span className={cn(
+                        bateu === true && "text-emerald-700 dark:text-emerald-400",
+                        bateu === false && "text-red-700 dark:text-red-400",
+                      )}>
+                        {brl(realizado)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Não lançado</span>
                     )}
-                  </TableRow>
-                );
-              })}
+                  </TableCell>
+
+                  {/* GAP */}
+                  <TableCell className="text-right font-bold text-xs">
+                    {gap !== null ? (
+                      <span className={cn(
+                        gap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400",
+                      )}>
+                        {gap >= 0 ? "+" : ""}{brl(gap)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+
+                  {/* STATUS */}
+                  <TableCell className="text-center whitespace-nowrap">
+                    {bateu === null ? (
+                      <span className="text-muted-foreground text-[10px]">Aguardando</span>
+                    ) : bateu ? (
+                      <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5 shadow-sm">
+                        🟢 META BATIDA
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
+                        🔴 NÃO BATIDA
+                      </Badge>
+                    )}
+                    {pct !== null && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{pct.toFixed(1)}%</p>
+                    )}
+                  </TableCell>
+
+                  {/* AÇÕES MASTER */}
+                  {isMaster && (
+                    <TableCell className="text-center">
+                      {goal ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[11px] px-2 text-primary hover:text-primary"
+                          onClick={() =>
+                            onEditGoal({
+                              goalId: goal.id,
+                              storeName,
+                              storeId,
+                              year,
+                              month: pm.month,
+                              faturamentoBase: goal ? Number(goal.faturamento_base_ano_anterior) : 0,
+                              metaFaturamento: goal ? Number(goal.meta_faturamento) : 0,
+                              tcBase: goal ? Number(goal.tc_ano_anterior) : 0,
+                              metaTc: goal ? Number(goal.meta_tc) : 0,
+                            })
+                          }
+                        >
+                          <Edit3 className="size-3 mr-1" /> Editar
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground text-[11px]">Sem meta</span>
+                      )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+
+              {/* TOTAL ANUAL */}
+              <TableRow className={cn(
+                "font-extrabold border-t-2 text-sm",
+                totalBateu === true && "bg-emerald-100/60 dark:bg-emerald-900/20",
+                totalBateu === false && "bg-red-100/40 dark:bg-red-900/10",
+                totalBateu === null && "bg-muted/40",
+              )}>
+                <TableCell className="text-center font-extrabold text-xs uppercase tracking-wide">
+                  TOTAL ANUAL
+                </TableCell>
+                <TableCell className="text-right font-extrabold text-primary text-xs">
+                  {totalOrcado > 0 ? brl(totalOrcado) : "—"}
+                </TableCell>
+                <TableCell className="text-right font-extrabold text-xs">
+                  {hasRealizado ? (
+                    <span className={cn(
+                      totalBateu === true && "text-emerald-700 dark:text-emerald-400",
+                      totalBateu === false && "text-red-700 dark:text-red-400",
+                    )}>
+                      {brl(totalRealizado)}
+                    </span>
+                  ) : "—"}
+                </TableCell>
+                <TableCell className="text-right font-extrabold text-xs">
+                  {totalGap !== null ? (
+                    <span className={totalGap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}>
+                      {totalGap >= 0 ? "+" : ""}{brl(totalGap)}
+                    </span>
+                  ) : "—"}
+                </TableCell>
+                <TableCell className="text-center">
+                  {totalBateu === null ? (
+                    <span className="text-muted-foreground text-xs">Aguardando</span>
+                  ) : totalBateu ? (
+                    <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3 py-1 shadow">
+                      🟢 META BATIDA
+                    </Badge>
+                  ) : (
+                    <Badge variant="destructive" className="font-extrabold text-[11px] px-3 py-1">
+                      🔴 NÃO BATIDA
+                    </Badge>
+                  )}
+                </TableCell>
+                {isMaster && <TableCell />}
+              </TableRow>
             </TableBody>
           </Table>
         </div>
