@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -14,7 +14,6 @@ import {
   FileSpreadsheet,
   FileText,
   RefreshCw,
-  Sparkles,
   Upload,
   XCircle,
 } from "lucide-react";
@@ -379,8 +378,8 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                 onClick={() => syncPdfMutation.mutate()}
                 disabled={syncPdfMutation.isPending}
               >
-                <Sparkles className="size-3.5 text-primary mr-1.5" />
-                {syncPdfMutation.isPending ? "Sincronizando..." : "Carregar Orçamento Oficial do PDF"}
+                <RefreshCw className={cn("size-3.5 text-primary mr-1.5", syncPdfMutation.isPending && "animate-spin")} />
+                {syncPdfMutation.isPending ? "Sincronizando..." : "↻ Sincronizar Informações"}
               </Button>
             </div>
           ) : (
@@ -1377,6 +1376,100 @@ function GrowthSettings() {
   );
 }
 
+/* --------------------------------------------------------- Column auto-read card */
+
+function ColumnAutoReadCard({
+  headers,
+  map,
+  setMap,
+}: {
+  headers: string[];
+  map: ColumnMap;
+  setMap: React.Dispatch<React.SetStateAction<ColumnMap>>;
+}) {
+  const [showManual, setShowManual] = useState(false);
+
+  return (
+    <Card className={cn(showManual ? "border-amber-400/60" : "border-dashed border-muted/60")}>
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              {showManual ? (
+                <span className="text-amber-600">⚙️ Ajuste Manual de Leitura</span>
+              ) : (
+                <span className="text-emerald-700 dark:text-emerald-400">✓ Leitura automática concluída</span>
+              )}
+            </CardTitle>
+            {!showManual && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                O sistema identificou automaticamente: Loja, Período, Faturamento, Taxa de Entrega e TC.
+                Se algo estiver incorreto, clique em "Ajustar".
+              </p>
+            )}
+          </div>
+          <Button
+            size="sm"
+            variant={showManual ? "default" : "outline"}
+            className="text-xs h-7 shrink-0"
+            onClick={() => setShowManual((v) => !v)}
+          >
+            {showManual ? "✓ Fechar ajuste" : "⚙️ Ajustar leitura manualmente"}
+          </Button>
+        </div>
+      </CardHeader>
+      {showManual && (
+        <CardContent>
+          <div className="rounded-md border overflow-hidden mb-3">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/30 text-xs">
+                  <TableHead>Informação</TableHead>
+                  <TableHead>Identificação encontrada</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(
+                  [
+                    ["store", "Loja"],
+                    ["month", "Período / Mês"],
+                    ["receita", "Faturamento"],
+                    ["taxa", "Taxa de Entrega/Serviço"],
+                    ["tc", "TC — Total de Atendimentos"],
+                  ] as Array<[keyof ColumnMap, string]>
+                ).map(([key, label]) => (
+                  <TableRow key={key} className="text-xs">
+                    <TableCell className="font-medium">{label}</TableCell>
+                    <TableCell>
+                      <Select
+                        value={map[key] || "none"}
+                        onValueChange={(v) => setMap((m) => ({ ...m, [key]: v === "none" ? "" : v }))}
+                      >
+                        <SelectTrigger className="text-xs h-7">
+                          <SelectValue placeholder="Não detectado" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">— não usar —</SelectItem>
+                          {headers.map((h) => (
+                            <SelectItem key={h} value={h}>{h}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!map[key] && (
+                        <p className="text-[10px] text-amber-600 mt-0.5">Não detectado automaticamente</p>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 /* --------------------------------------------------------- Import wizard */
 
 type Step = "upload" | "map" | "review";
@@ -1638,42 +1731,11 @@ function ImportWizard() {
       </Card>
 
       {step !== "upload" && headers.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">2. Mapear as colunas</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            {(
-              [
-                ["store", "Loja (Coluna D)"],
-                ["month", "Mês (Coluna F)"],
-                ["receita", "FATURAMENTO (Coluna H)"],
-                ["taxa", "Taxa de serviço (opcional)"],
-                ["tc", "TC — Clientes/Pedidos (Coluna L)"],
-              ] as Array<[keyof ColumnMap, string]>
-            ).map(([key, label]) => (
-              <div key={key} className="space-y-1.5">
-                <Label>{label}</Label>
-                <Select
-                  value={map[key] || "none"}
-                  onValueChange={(v) => setMap((m) => ({ ...m, [key]: v === "none" ? "" : v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecionar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">— não usar —</SelectItem>
-                    {headers.map((h) => (
-                      <SelectItem key={h} value={h}>
-                        {h}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <ColumnAutoReadCard
+          headers={headers}
+          map={map}
+          setMap={setMap}
+        />
       )}
 
       {unmatched.length > 0 && (

@@ -80,8 +80,8 @@ export function guessColumn(headers: string[], candidates: string[]) {
 }
 
 export const COLUMN_HINTS: Record<keyof ColumnMap, string[]> = {
-  store: ["loja", "coluna d", "d", "unidade", "filial", "restaurante", "store"],
-  month: ["mes", "mês", "coluna f", "f", "periodo", "competencia", "data"],
+  store: ["loja", "coluna d", "d", "unidade", "filial", "restaurante", "store", "ponto de venda", "pdv", "estabelecimento"],
+  month: ["mes", "mês", "coluna f", "f", "periodo", "periodo referencia", "competencia", "data", "month", "período", "mês/ano", "mes/ano", "referencia"],
   receita: [
     "faturamento",
     "coluna h",
@@ -94,8 +94,28 @@ export const COLUMN_HINTS: Record<keyof ColumnMap, string[]> = {
     "faturamento liquido sem taxa",
     "faturamento liquido",
     "receita",
+    "fat liquido",
+    "fat. liquido",
+    "revenue",
+    "sales",
+    "net sales",
+    "faturamento sem taxa",
   ],
-  taxa: ["taxa de servico", "taxa servico", "taxa de serviço", "taxa"],
+  taxa: [
+    "taxa de servico",
+    "taxa servico",
+    "taxa de serviço",
+    "taxa",
+    "taxa de entrega",
+    "taxa entrega",
+    "delivery fee",
+    "service fee",
+    "entrega",
+    "fee",
+    "taxa delivery",
+    "taxa de delivery",
+    "tarifa",
+  ],
   tc: [
     "tc — quantidade de clientes/pedidos atendidos",
     "tc - quantidade de clientes/pedidos atendidos",
@@ -109,6 +129,19 @@ export const COLUMN_HINTS: Record<keyof ColumnMap, string[]> = {
     "clientes",
     "pedidos",
     "cupons",
+    "total de atendimentos",
+    "total atendimentos",
+    "atendimentos",
+    "total atendimento",
+    "atendimento",
+    "transacoes",
+    "transações",
+    "transactions",
+    "orders",
+    "total pedidos",
+    "qtd pedidos",
+    "qtd atendimentos",
+    "quantidade atendimentos",
   ],
 };
 
@@ -120,14 +153,23 @@ export function normalizeStoreName(name: string) {
     .toLowerCase()
     .trim();
 
-  // Remove prefixos de estado/tipo iterativamente
-  // Garante que "SP VILA CLEMENTINO" → "vila clementino"
+  // Remove prefixos de marca de rede (DOMINO'S, DOMINOS, PIZZA HUT, SUBWAY, SPOLETO etc.)
+  const BRAND_RE = /^(domino'?s\s*[-–]?\s*|pizza\s*hut\s*[-–]?\s*|subway\s*[-–]?\s*|burger\s*king\s*[-–]?\s*|mc\s*donalds?\s*[-–]?\s*|kfc\s*[-–]?\s*)/;
+
+  // Remove prefixos de estado iterativamente
   const PREFIX_RE = /^(sp|es|rj|mg|pr|sc|ba|ce|go|df|rs|pe|am|pa|ma|al|pi|pb|rn|se|ac|ap|ro|rr|to|ms|mt)\s+[-–]?\s*/;
-  const TYPE_RE   = /^(loja|restaurante|filial|unidade|store)\s+/;
+  const TYPE_RE   = /^(loja|restaurante|filial|unidade|store|pdv|ponto)\s+/;
   const SUFFIX_RE = /\s+(sp|es|rj|mg|loja)\s*$/;
 
-  // Aplica remoções até estabilizar (sem mais prefixos)
+  // 1. Remove marca/rede do início
   let prev = "";
+  while (prev !== s) {
+    prev = s;
+    s = s.replace(BRAND_RE, "").trim();
+  }
+
+  // 2. Remove prefixos de estado/tipo iterativamente
+  prev = "";
   while (prev !== s) {
     prev = s;
     s = s.replace(PREFIX_RE, "").replace(TYPE_RE, "").replace(SUFFIX_RE, "").trim();
