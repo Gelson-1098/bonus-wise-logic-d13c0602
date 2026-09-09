@@ -110,6 +110,127 @@ const PDF_MONTHS = [
   { month: 12, label: "DEZ", full: "Dezembro" },
 ];
 
+/* ------------------------------------------------------------------ Indicador Visual de Atingimento */
+
+export function getAtingimentoStatus(pct: number | null) {
+  if (pct === null || !Number.isFinite(pct)) {
+    return {
+      label: "Não lançado",
+      shortLabel: "Não lançado",
+      icon: "⚪",
+      color: "text-muted-foreground",
+      badgeClass: "bg-muted text-muted-foreground border-border",
+      barColor: "bg-muted",
+      code: "none" as const,
+    };
+  }
+
+  if (pct >= 100) {
+    return {
+      label: "META SUPERADA",
+      shortLabel: "SUPERADA",
+      icon: "🟢",
+      color: "text-emerald-700 dark:text-emerald-400",
+      badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700",
+      barColor: "bg-emerald-500",
+      code: "superada" as const,
+    };
+  }
+
+  if (pct >= 90) {
+    return {
+      label: "ATINGIDO",
+      shortLabel: "ATINGIDO",
+      icon: "🟢",
+      color: "text-emerald-700 dark:text-emerald-400",
+      badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700",
+      barColor: "bg-emerald-500",
+      code: "atingido" as const,
+    };
+  }
+
+  if (pct >= 85) {
+    return {
+      label: "QUASE",
+      shortLabel: "QUASE",
+      icon: "🟡",
+      color: "text-amber-700 dark:text-amber-400",
+      badgeClass: "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700",
+      barColor: "bg-amber-500",
+      code: "quase" as const,
+    };
+  }
+
+  if (pct >= 80) {
+    return {
+      label: "ABAIXO",
+      shortLabel: "ABAIXO",
+      icon: "🔴",
+      color: "text-orange-700 dark:text-orange-400",
+      badgeClass: "bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/50 dark:text-orange-300 dark:border-orange-700",
+      barColor: "bg-orange-500",
+      code: "abaixo" as const,
+    };
+  }
+
+  return {
+    label: "CRÍTICO",
+    shortLabel: "CRÍTICO",
+    icon: "🔴",
+    color: "text-rose-700 dark:text-rose-400",
+    badgeClass: "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-700",
+    barColor: "bg-rose-600",
+    code: "critico" as const,
+  };
+}
+
+function AtingimentoIndicator({ pct, compact = false }: { pct: number | null; compact?: boolean }) {
+  if (pct === null || !Number.isFinite(pct)) {
+    return <span className="text-muted-foreground text-xs italic">Não lançado</span>;
+  }
+
+  const status = getAtingimentoStatus(pct);
+  const visualPct = Math.min(Math.max(pct, 0), 100);
+
+  return (
+    <div className={cn("flex flex-col gap-1", compact ? "items-end min-w-[110px]" : "items-end min-w-[140px]")}>
+      <div className="flex items-center gap-1">
+        <Badge
+          variant="outline"
+          className={cn(
+            "font-black text-xs px-2 py-0.5 border shadow-sm flex items-center gap-1.5",
+            status.badgeClass,
+          )}
+        >
+          <span>{status.icon}</span>
+          <span>{pct.toFixed(1)}%</span>
+          <span className="opacity-90 font-bold">— {status.label}</span>
+        </Badge>
+      </div>
+
+      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden flex bg-muted/80">
+        <div
+          className={cn("h-full transition-all duration-300 rounded-full", status.barColor)}
+          style={{ width: `${visualPct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function AtingimentoStatusBadge({ pct }: { pct: number | null }) {
+  if (pct === null || !Number.isFinite(pct)) {
+    return <Badge variant="outline" className="text-muted-foreground text-[10px] font-bold">Aguardando</Badge>;
+  }
+  const status = getAtingimentoStatus(pct);
+  return (
+    <Badge className={cn("font-black text-[11px] px-2.5 py-0.5 shadow-sm flex items-center justify-center gap-1", status.badgeClass)}>
+      <span>{status.icon}</span>
+      <span>{status.label}</span>
+    </Badge>
+  );
+}
+
 function MetasPage() {
   const { data: access } = useAccess();
   const isMaster = access?.isMaster ?? false;
@@ -200,7 +321,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
   const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
   const [editingGoal, setEditingGoal] = useState<EditGoalPayload | null>(null);
 
-  const { data: stores, isLoading: loadingStores } = useStores();
+  const { data: stores } = useStores();
 
   const goalsQuery = useQuery({
     queryKey: ["store-goals", year],
@@ -217,23 +338,107 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
     },
   });
 
+  // Query resiliente que busca o faturamento realizado oficial vinculado à Loja + Mês + Ano
   const actualsQuery = useQuery({
     queryKey: ["actuals-targets", year],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("bonus_periods")
-        .select("id,store_id,month,year,store_targets(revenue_actual,tc_actual)")
-        .eq("year", year);
-      if (error) throw new Error(error.message);
-      return data ?? [];
+      const map = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
+
+      // 1. Busca da estrutura oficial de apuração (bonus_periods + store_targets)
+      try {
+        const { data: periods, error: pErr } = await supabase
+          .from("bonus_periods")
+          .select("id,store_id,month,year,store_targets(revenue_actual,tc_actual)")
+          .eq("year", year);
+
+        if (!pErr && periods) {
+          for (const p of periods) {
+            const targets = p.store_targets;
+            let rev: number | null = null;
+            let tc: number | null = null;
+
+            if (Array.isArray(targets) && targets.length > 0) {
+              rev = targets[0]?.revenue_actual != null ? Number(targets[0].revenue_actual) : null;
+              tc = targets[0]?.tc_actual != null ? Number(targets[0].tc_actual) : null;
+            } else if (targets && typeof targets === "object") {
+              rev = (targets as any).revenue_actual != null ? Number((targets as any).revenue_actual) : null;
+              tc = (targets as any).tc_actual != null ? Number((targets as any).tc_actual) : null;
+            }
+
+            if (rev != null || tc != null) {
+              map.set(`${p.store_id}-${p.month}`, { revenue_actual: rev, tc_actual: tc });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("bonus_periods query:", err);
+      }
+
+      // 2. Complemento direto de store_targets
+      try {
+        const { data: directTargets } = await supabase
+          .from("store_targets")
+          .select("store_id, revenue_actual, tc_actual, bonus_periods!inner(month, year)")
+          .eq("bonus_periods.year", year);
+
+        if (directTargets) {
+          for (const dt of directTargets as any[]) {
+            const m = dt.bonus_periods?.month;
+            const sId = dt.store_id;
+            if (sId && m && (dt.revenue_actual != null || dt.tc_actual != null)) {
+              if (!map.has(`${sId}-${m}`)) {
+                map.set(`${sId}-${m}`, {
+                  revenue_actual: dt.revenue_actual != null ? Number(dt.revenue_actual) : null,
+                  tc_actual: dt.tc_actual != null ? Number(dt.tc_actual) : null,
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("directTargets fallback:", err);
+      }
+
+      // 3. Complemento de revenue_history para o ano
+      try {
+        const { data: revHist } = await supabase
+          .from("revenue_history")
+          .select("store_id, month, receita_vendas, tc")
+          .eq("year", year);
+
+        if (revHist) {
+          for (const rh of revHist) {
+            if (rh.receita_vendas != null && !map.has(`${rh.store_id}-${rh.month}`)) {
+              map.set(`${rh.store_id}-${rh.month}`, {
+                revenue_actual: Number(rh.receita_vendas),
+                tc_actual: rh.tc != null ? Number(rh.tc) : null,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("revenue_history fallback:", err);
+      }
+
+      return Array.from(map.entries()).map(([key, val]) => {
+        const [store_id, month] = key.split("-");
+        return {
+          store_id,
+          month: Number(month),
+          revenue_actual: val.revenue_actual,
+          tc_actual: val.tc_actual,
+        };
+      });
     },
   });
 
   const actualMap = useMemo(() => {
     const m = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
-    for (const p of actualsQuery.data ?? []) {
-      const t = p.store_targets as unknown as { revenue_actual: number | null; tc_actual: number | null } | null;
-      if (t) m.set(`${p.store_id}-${p.month}`, t);
+    for (const item of actualsQuery.data ?? []) {
+      m.set(`${item.store_id}-${item.month}`, {
+        revenue_actual: item.revenue_actual,
+        tc_actual: item.tc_actual,
+      });
     }
     return m;
   }, [actualsQuery.data]);
@@ -319,6 +524,42 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
     );
   }, [goalsQuery.data]);
 
+  // Totais Consolidados Gerais
+  const grandTotals = useMemo(() => {
+    let grandOrcado = 0;
+    let grandRealizado = 0;
+    let grandHasRealizado = false;
+
+    for (const pm of PDF_MONTHS) {
+      const mTot = monthlyTotals[pm.month];
+      grandOrcado += metric === "faturamento" ? mTot?.metaFat ?? 0 : mTot?.metaTc ?? 0;
+    }
+
+    for (const s of activeStores) {
+      for (const pm of PDF_MONTHS) {
+        const actual = actualMap.get(`${s.id}-${pm.month}`);
+        const val = metric === "faturamento" ? actual?.revenue_actual : actual?.tc_actual;
+        if (val != null) {
+          grandRealizado += Number(val);
+          grandHasRealizado = true;
+        }
+      }
+    }
+
+    const grandGap = grandHasRealizado && grandOrcado > 0 ? grandRealizado - grandOrcado : null;
+    const grandPct = grandHasRealizado && grandOrcado > 0 ? (grandRealizado / grandOrcado) * 100 : null;
+    const grandStatus = getAtingimentoStatus(grandPct);
+
+    return {
+      grandOrcado,
+      grandRealizado,
+      grandHasRealizado,
+      grandGap,
+      grandPct,
+      grandStatus,
+    };
+  }, [monthlyTotals, activeStores, actualMap, metric]);
+
   return (
     <div className="space-y-5">
       {/* Barra de Ações e Filtros */}
@@ -394,32 +635,91 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
 
       {/* Cards de Resumo Consolidado do Período */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-4 border-l-4 border-l-primary">
-          <p className="text-xs font-semibold text-muted-foreground uppercase">Meta Faturamento (Jun–Dez)</p>
-          <p className="text-2xl font-black text-primary mt-1">{brl(totalPeriodMeta.metaFat)}</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Base anterior: {brl(totalPeriodMeta.baseFat)} (+10%)</p>
+        {/* 1. FATURAMENTO ORÇADO */}
+        <Card className="p-4 border-l-4 border-l-primary bg-card">
+          <p className="text-xs font-semibold text-muted-foreground uppercase">
+            {metric === "faturamento" ? "Faturamento Orçado (Jun–Dez)" : "Meta TC Orçada (Jun–Dez)"}
+          </p>
+          <p className="text-2xl font-black text-primary mt-1">
+            {metric === "faturamento" ? brl(grandTotals.grandOrcado) : intFmt(grandTotals.grandOrcado)}
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Base {year - 1}: {metric === "faturamento" ? brl(totalPeriodMeta.baseFat) : intFmt(totalPeriodMeta.baseTc)} (+10%)
+          </p>
         </Card>
 
-        <Card className="p-4 border-l-4 border-l-sky-500">
-          <p className="text-xs font-semibold text-muted-foreground uppercase">Meta TC Atendimentos (Jun–Dez)</p>
-          <p className="text-2xl font-black text-sky-600 mt-1">{intFmt(totalPeriodMeta.metaTc)}</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Base anterior: {intFmt(totalPeriodMeta.baseTc)} (+10%)</p>
+        {/* 2. FATURAMENTO REALIZADO */}
+        <Card className="p-4 border-l-4 border-l-emerald-500 bg-card">
+          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase">
+            {metric === "faturamento" ? "Faturamento Realizado" : "TC Realizado"}
+          </p>
+          <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-1">
+            {grandTotals.grandHasRealizado
+              ? metric === "faturamento"
+                ? brl(grandTotals.grandRealizado)
+                : intFmt(grandTotals.grandRealizado)
+              : "Não lançado"}
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {grandTotals.grandHasRealizado
+              ? "Soma real individualizada das lojas"
+              : "Aguardando importação"}
+          </p>
         </Card>
 
-        <Card className="p-4 border-l-4 border-l-emerald-500">
-          <p className="text-xs font-semibold text-muted-foreground uppercase">Lojas no Orçamento</p>
-          <p className="text-2xl font-black text-emerald-600 mt-1">{activeStores.length}</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">10 unidades da rede DEX</p>
+        {/* 3. ATINGIMENTO DO GRUPO */}
+        <Card className="p-4 border-l-4 border-l-sky-500 bg-card">
+          <p className="text-xs font-semibold text-sky-700 dark:text-sky-400 uppercase">
+            Atingimento do Grupo (Total)
+          </p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <p className="text-2xl font-black text-sky-700 dark:text-sky-300">
+              {grandTotals.grandPct !== null ? `${grandTotals.grandPct.toFixed(1)}%` : "—"}
+            </p>
+            {grandTotals.grandPct !== null && (
+              <Badge variant="outline" className={cn("text-[10px] font-extrabold px-1.5 py-0.2", grandTotals.grandStatus.badgeClass)}>
+                {grandTotals.grandStatus.icon} {grandTotals.grandStatus.label}
+              </Badge>
+            )}
+          </div>
+          {grandTotals.grandPct !== null && (
+            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mt-2">
+              <div
+                className={cn("h-full transition-all duration-300 rounded-full", grandTotals.grandStatus.barColor)}
+                style={{ width: `${Math.min(Math.max(grandTotals.grandPct, 0), 100)}%` }}
+              />
+            </div>
+          )}
         </Card>
 
-        <Card className="p-4 border-l-4 border-l-amber-500">
-          <p className="text-xs font-semibold text-muted-foreground uppercase">Meses Orçados</p>
-          <p className="text-2xl font-black text-amber-600 mt-1">7 meses</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Junho a Dezembro / {year}</p>
+        {/* 4. DIFERENÇA / LACUNA */}
+        <Card className="p-4 border-l-4 border-l-amber-500 bg-card">
+          <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase">
+            Diferença / Lacuna (Gap)
+          </p>
+          <p className={cn(
+            "text-2xl font-black mt-1",
+            grandTotals.grandGap === null
+              ? "text-muted-foreground"
+              : grandTotals.grandGap >= 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-red-600 dark:text-red-400",
+          )}>
+            {grandTotals.grandGap !== null
+              ? `${grandTotals.grandGap >= 0 ? "+" : ""}${metric === "faturamento" ? brl(grandTotals.grandGap) : intFmt(grandTotals.grandGap)}`
+              : "—"}
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {grandTotals.grandGap !== null
+              ? grandTotals.grandGap >= 0
+                ? "Superávit em relação à meta"
+                : "Déficit em relação à meta"
+              : "7 meses (Junho a Dezembro)"}
+          </p>
         </Card>
       </div>
 
-      {/* TABELA CONSOLIDADA GERAL: LOJA x ORÇADO x REALIZADO x GAP x STATUS */}
+      {/* TABELA CONSOLIDADA GERAL: LOJA x ORÇADO x REALIZADO x GAP x % ATINGIMENTO x STATUS */}
       <Card>
         <CardHeader className="py-3 px-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -428,7 +728,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                 Acompanhamento Consolidado — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Atendimentos)"} {year}
               </CardTitle>
               <CardDescription className="text-xs">
-                Comparativo oficial de Orçado vs Realizado acumulado do período por loja.
+                Comparativo oficial de Orçado vs Realizado acumulado do período por loja com cruzamento automático Loja + Mês + Ano.
               </CardDescription>
             </div>
             <div className="text-xs text-muted-foreground font-medium">
@@ -441,12 +741,13 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
             <Table>
               <TableHeader className="bg-muted/50 text-xs font-bold uppercase">
                 <TableRow>
-                  <TableHead className="w-[240px]">Loja</TableHead>
-                  <TableHead className="text-right w-[160px]">Orçado ({metric === "faturamento" ? "R$" : "Qtd"})</TableHead>
-                  <TableHead className="text-right w-[160px]">Realizado ({metric === "faturamento" ? "R$" : "Qtd"})</TableHead>
-                  <TableHead className="text-right w-[140px]">Diferença (Gap)</TableHead>
+                  <TableHead className="w-[200px]">Loja</TableHead>
+                  <TableHead className="text-right w-[150px]">Orçado ({metric === "faturamento" ? "R$" : "Qtd"})</TableHead>
+                  <TableHead className="text-right w-[150px]">Realizado ({metric === "faturamento" ? "R$" : "Qtd"})</TableHead>
+                  <TableHead className="text-right w-[130px]">Diferença (Gap)</TableHead>
+                  <TableHead className="text-right w-[170px]">% Atingimento</TableHead>
                   <TableHead className="text-center w-[130px]">Status Meta</TableHead>
-                  <TableHead className="text-center w-[100px]">Ações</TableHead>
+                  <TableHead className="text-center w-[90px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -467,8 +768,9 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                       : actual?.tc_actual;
                     if (rev != null) { storeRealizado += Number(rev); storeHasRealizado = true; }
                   }
+
                   const storeGap = storeHasRealizado && storeOrcado > 0 ? storeRealizado - storeOrcado : null;
-                  const storeBateu = storeHasRealizado && storeOrcado > 0 ? storeRealizado >= storeOrcado : null;
+                  const storePct = storeHasRealizado && storeOrcado > 0 ? (storeRealizado / storeOrcado) * 100 : null;
 
                   return (
                     <ReactFragment key={s.id}>
@@ -476,8 +778,8 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                         className={cn(
                           "cursor-pointer hover:bg-muted/30 transition-colors",
                           isExpanded && "bg-muted/20 border-l-4 border-l-primary",
-                          storeBateu === true && !isExpanded && "bg-emerald-50/30 dark:bg-emerald-950/10",
-                          storeBateu === false && !isExpanded && "bg-red-50/30 dark:bg-red-950/10",
+                          storePct !== null && storePct >= 90 && !isExpanded && "bg-emerald-50/30 dark:bg-emerald-950/10",
+                          storePct !== null && storePct < 90 && !isExpanded && "bg-red-50/30 dark:bg-red-950/10",
                         )}
                         onClick={() => setExpandedStoreId(isExpanded ? null : s.id)}
                       >
@@ -502,13 +804,13 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                         <TableCell className="text-right font-semibold">
                           {storeHasRealizado ? (
                             <span className={cn(
-                              storeBateu === true && "text-emerald-700 dark:text-emerald-400",
-                              storeBateu === false && "text-red-700 dark:text-red-400",
+                              storePct !== null && storePct >= 90 && "text-emerald-700 dark:text-emerald-400 font-bold",
+                              storePct !== null && storePct < 90 && "text-red-700 dark:text-red-400 font-bold",
                             )}>
                               {metric === "faturamento" ? brl(storeRealizado) : intFmt(storeRealizado)}
                             </span>
                           ) : (
-                            <span className="text-muted-foreground text-sm">Não lançado</span>
+                            <span className="text-muted-foreground text-xs italic">Não lançado</span>
                           )}
                         </TableCell>
 
@@ -518,27 +820,21 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                             <span className={storeGap >= 0
                               ? "text-emerald-700 dark:text-emerald-400"
                               : "text-red-700 dark:text-red-400"}>
-                              {storeGap >= 0 ? "+" : ""}
-                              {metric === "faturamento" ? brl(storeGap) : intFmt(storeGap)}
+                              {storeGap >= 0 ? "+" : ""}{metric === "faturamento" ? brl(storeGap) : intFmt(storeGap)}
                             </span>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
 
+                        {/* % ATINGIMENTO */}
+                        <TableCell className="text-right">
+                          <AtingimentoIndicator pct={storePct} />
+                        </TableCell>
+
                         {/* STATUS */}
                         <TableCell className="text-center">
-                          {storeBateu === null ? (
-                            <span className="text-muted-foreground text-xs">Aguardando</span>
-                          ) : storeBateu ? (
-                            <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5 shadow-sm">
-                              🟢 META BATIDA
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
-                              🔴 NÃO BATIDA
-                            </Badge>
-                          )}
+                          <AtingimentoStatusBadge pct={storePct} />
                         </TableCell>
 
                         {/* DETALHAR */}
@@ -546,7 +842,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-xs"
+                            className="h-7 text-xs font-semibold"
                             onClick={() => setExpandedStoreId(isExpanded ? null : s.id)}
                           >
                             {isExpanded ? "Ocultar" : "Ver meses"}
@@ -557,7 +853,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                       {/* Detalhamento mês a mês */}
                       {isExpanded && (
                         <TableRow className="bg-muted/10">
-                          <TableCell colSpan={6} className="p-4">
+                          <TableCell colSpan={7} className="p-4">
                             <StoreDetailCard
                               storeId={s.id}
                               storeName={s.name}
@@ -574,62 +870,39 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                   );
                 })}
 
-                {/* Linha de Totais Gerais */}
-                {activeStores.length > 0 && (() => {
-                  let grandOrcado = 0;
-                  let grandRealizado = 0;
-                  let grandHasRealizado = false;
-                  for (const pm of PDF_MONTHS) {
-                    const mTot = monthlyTotals[pm.month];
-                    grandOrcado += metric === "faturamento" ? mTot?.metaFat ?? 0 : mTot?.metaTc ?? 0;
-                  }
-                  for (const p of actualsQuery.data ?? []) {
-                    const t = p.store_targets as unknown as { revenue_actual: number | null; tc_actual: number | null } | null;
-                    const val = metric === "faturamento" ? t?.revenue_actual : t?.tc_actual;
-                    if (val != null) { grandRealizado += Number(val); grandHasRealizado = true; }
-                  }
-                  const grandGap = grandHasRealizado && grandOrcado > 0 ? grandRealizado - grandOrcado : null;
-                  const grandBateu = grandHasRealizado && grandOrcado > 0 ? grandRealizado >= grandOrcado : null;
-                  return (
-                    <TableRow className="bg-muted/60 font-extrabold border-t-2 text-sm">
-                      <TableCell className="font-extrabold uppercase tracking-wide text-xs">TOTAL CONSOLIDADO</TableCell>
-                      <TableCell className="text-right font-extrabold text-primary">
-                        {grandOrcado > 0 ? (metric === "faturamento" ? brl(grandOrcado) : intFmt(grandOrcado)) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-extrabold">
-                        {grandHasRealizado ? (
-                          <span className={cn(
-                            grandBateu === true && "text-emerald-700 dark:text-emerald-400",
-                            grandBateu === false && "text-red-700 dark:text-red-400",
-                          )}>
-                            {metric === "faturamento" ? brl(grandRealizado) : intFmt(grandRealizado)}
-                          </span>
-                        ) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-extrabold">
-                        {grandGap !== null ? (
-                          <span className={grandGap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}>
-                            {grandGap >= 0 ? "+" : ""}{metric === "faturamento" ? brl(grandGap) : intFmt(grandGap)}
-                          </span>
-                        ) : "—"}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {grandBateu === null ? (
-                          <span className="text-muted-foreground text-xs">Aguardando</span>
-                        ) : grandBateu ? (
-                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3 py-1 shadow">
-                            🟢 META BATIDA
-                          </Badge>
-                        ) : (
-                          <Badge variant="destructive" className="font-extrabold text-[11px] px-3 py-1">
-                            🔴 NÃO BATIDA
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell />
-                    </TableRow>
-                  );
-                })()}
+                {/* Linha de Totais Gerais Consolidados */}
+                {activeStores.length > 0 && (
+                  <TableRow className="bg-muted/60 font-extrabold border-t-2 text-sm">
+                    <TableCell className="font-extrabold uppercase tracking-wide text-xs">TOTAL CONSOLIDADO</TableCell>
+                    <TableCell className="text-right font-extrabold text-primary">
+                      {grandTotals.grandOrcado > 0 ? (metric === "faturamento" ? brl(grandTotals.grandOrcado) : intFmt(grandTotals.grandOrcado)) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-extrabold">
+                      {grandTotals.grandHasRealizado ? (
+                        <span className={cn(
+                          grandTotals.grandPct !== null && grandTotals.grandPct >= 90 && "text-emerald-700 dark:text-emerald-400",
+                          grandTotals.grandPct !== null && grandTotals.grandPct < 90 && "text-red-700 dark:text-red-400",
+                        )}>
+                          {metric === "faturamento" ? brl(grandTotals.grandRealizado) : intFmt(grandTotals.grandRealizado)}
+                        </span>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-extrabold">
+                      {grandTotals.grandGap !== null ? (
+                        <span className={grandTotals.grandGap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}>
+                          {grandTotals.grandGap >= 0 ? "+" : ""}{metric === "faturamento" ? brl(grandTotals.grandGap) : intFmt(grandTotals.grandGap)}
+                        </span>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <AtingimentoIndicator pct={grandTotals.grandPct} />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <AtingimentoStatusBadge pct={grandTotals.grandPct} />
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
@@ -688,16 +961,16 @@ function StoreDetailCard({
     const realizado = actual?.revenue_actual != null ? Number(actual.revenue_actual) : null;
     const gap = realizado !== null && orcado > 0 ? realizado - orcado : null;
     const pct = orcado > 0 && realizado !== null ? (realizado / orcado) * 100 : null;
-    const bateu = realizado !== null && orcado > 0 ? realizado >= orcado : null;
 
     totalOrcado += orcado;
     if (realizado !== null) { totalRealizado += realizado; hasRealizado = true; }
 
-    return { pm, goal, orcado, realizado, gap, pct, bateu };
+    return { pm, goal, orcado, realizado, gap, pct };
   });
 
   const totalGap = hasRealizado ? totalRealizado - totalOrcado : null;
-  const totalBateu = hasRealizado && totalOrcado > 0 ? totalRealizado >= totalOrcado : null;
+  const totalPct = hasRealizado && totalOrcado > 0 ? (totalRealizado / totalOrcado) * 100 : null;
+  const totalStatus = getAtingimentoStatus(totalPct);
 
   return (
     <Card className="border shadow-none bg-card">
@@ -726,10 +999,10 @@ function StoreDetailCard({
               <Badge
                 className={cn(
                   "font-bold text-xs px-3 py-1 shadow-sm",
-                  totalBateu ? "bg-emerald-600 text-white" : "bg-destructive text-white",
+                  totalStatus.badgeClass,
                 )}
               >
-                {totalBateu ? "✓ META ANUAL ATINGIDA" : "✗ META ANUAL NÃO ATINGIDA"}
+                {totalStatus.icon} {totalStatus.label} ({totalPct?.toFixed(1)}%)
               </Badge>
             </div>
           )}
@@ -741,27 +1014,27 @@ function StoreDetailCard({
             <TableHeader className="bg-muted/40 text-xs font-semibold">
               <TableRow>
                 <TableHead className="w-[110px]">Mês / Período</TableHead>
-                <TableHead className="text-right w-[150px]">Base {year - 1}</TableHead>
-                <TableHead className="text-right w-[160px] font-bold text-primary bg-primary/5">
+                <TableHead className="text-right w-[140px]">Base {year - 1}</TableHead>
+                <TableHead className="text-right w-[150px] font-bold text-primary bg-primary/5">
                   Meta Obrigatória {year}
                 </TableHead>
-                <TableHead className="text-right w-[160px] font-bold">
+                <TableHead className="text-right w-[150px] font-bold">
                   Faturamento Realizado
                 </TableHead>
                 <TableHead className="text-right w-[130px]">Diferença (Gap)</TableHead>
-                <TableHead className="text-right w-[110px]">% Atingimento</TableHead>
+                <TableHead className="text-right w-[160px]">% Atingimento</TableHead>
                 <TableHead className="text-center w-[130px]">Status do Mês</TableHead>
-                {isMaster && <TableHead className="text-center w-[90px]">Editar</TableHead>}
+                {isMaster && <TableHead className="text-center w-[80px]">Editar</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map(({ pm, goal, orcado, realizado, gap, pct, bateu }) => (
+              {rows.map(({ pm, goal, orcado, realizado, gap, pct }) => (
                 <TableRow
                   key={pm.month}
                   className={cn(
                     "text-xs transition-colors",
-                    bateu === true && "bg-emerald-50/40 dark:bg-emerald-950/20",
-                    bateu === false && "bg-red-50/40 dark:bg-red-950/20",
+                    pct !== null && pct >= 90 && "bg-emerald-50/40 dark:bg-emerald-950/20",
+                    pct !== null && pct < 90 && "bg-red-50/40 dark:bg-red-950/20",
                   )}
                 >
                   <TableCell className="font-bold">
@@ -784,13 +1057,13 @@ function StoreDetailCard({
                   <TableCell className="text-right font-bold">
                     {realizado !== null ? (
                       <span className={cn(
-                        bateu === true && "text-emerald-700 dark:text-emerald-400 font-extrabold",
-                        bateu === false && "text-red-700 dark:text-red-400 font-extrabold",
+                        pct !== null && pct >= 90 && "text-emerald-700 dark:text-emerald-400 font-extrabold",
+                        pct !== null && pct < 90 && "text-red-700 dark:text-red-400 font-extrabold",
                       )}>
                         {brl(realizado)}
                       </span>
                     ) : (
-                      <span className="text-muted-foreground italic">Pendente</span>
+                      <span className="text-muted-foreground italic">Não lançado</span>
                     )}
                   </TableCell>
 
@@ -806,39 +1079,13 @@ function StoreDetailCard({
                   </TableCell>
 
                   {/* % ATINGIMENTO */}
-                  <TableCell className="text-right font-bold">
-                    {pct !== null ? (
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "text-xs font-bold",
-                          pct >= 100
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
-                            : pct >= 90
-                              ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300"
-                              : "bg-red-50 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300",
-                        )}
-                      >
-                        {pct.toFixed(1)}%
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
+                  <TableCell className="text-right">
+                    <AtingimentoIndicator pct={pct} compact />
                   </TableCell>
 
                   {/* STATUS */}
                   <TableCell className="text-center">
-                    {bateu === null ? (
-                      <span className="text-muted-foreground text-xs">Aguardando</span>
-                    ) : bateu ? (
-                      <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5 shadow-sm">
-                        🟢 META BATIDA
-                      </Badge>
-                    ) : (
-                      <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
-                        🔴 NÃO BATIDA
-                      </Badge>
-                    )}
+                    <AtingimentoStatusBadge pct={pct} />
                   </TableCell>
 
                   {/* BOTÃO EDITAR (MASTER) */}
@@ -883,8 +1130,8 @@ function StoreDetailCard({
                 <TableCell className="text-right font-extrabold">
                   {hasRealizado ? (
                     <span className={cn(
-                      totalBateu === true && "text-emerald-700 dark:text-emerald-400",
-                      totalBateu === false && "text-red-700 dark:text-red-400",
+                      totalPct !== null && totalPct >= 90 && "text-emerald-700 dark:text-emerald-400",
+                      totalPct !== null && totalPct < 90 && "text-red-700 dark:text-red-400",
                     )}>
                       {brl(totalRealizado)}
                     </span>
@@ -902,34 +1149,10 @@ function StoreDetailCard({
                   )}
                 </TableCell>
                 <TableCell className="text-right font-extrabold">
-                  {hasRealizado && totalOrcado > 0 ? (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-xs font-bold",
-                        (totalRealizado / totalOrcado) * 100 >= 100
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-300"
-                          : "bg-red-50 text-red-700 border-red-300",
-                      )}
-                    >
-                      {((totalRealizado / totalOrcado) * 100).toFixed(1)}%
-                    </Badge>
-                  ) : (
-                    "—"
-                  )}
+                  <AtingimentoIndicator pct={totalPct} compact />
                 </TableCell>
                 <TableCell className="text-center">
-                  {totalBateu === null ? (
-                    <span className="text-muted-foreground text-xs">Aguardando</span>
-                  ) : totalBateu ? (
-                    <Badge className="bg-emerald-600 text-white font-bold text-[10px]">
-                      🟢 BATIDA
-                    </Badge>
-                  ) : (
-                    <Badge variant="destructive" className="font-bold text-[10px]">
-                      🔴 NÃO BATIDA
-                    </Badge>
-                  )}
+                  <AtingimentoStatusBadge pct={totalPct} />
                 </TableCell>
                 {isMaster && <TableCell />}
               </TableRow>
@@ -1430,8 +1653,6 @@ function ImportWizard() {
   const nowYear = new Date().getFullYear();
   const fileRef = useRef<HTMLInputElement>(null);
   const importFn = useServerFn(importRevenueHistory);
-  const generateFn = useServerFn(generateGoals);
-
   const { data: stores } = useStores();
 
   const [importMode, setImportMode] = useState<"realizado" | "meta">("realizado");
@@ -1700,22 +1921,12 @@ function ImportWizard() {
           console.warn("Server importFn notice:", serverFnErr);
         }
 
-        // Recalcula as metas oficiais a partir do histórico recém-importado
-        let goalsGenerated = 0;
-        try {
-          const res = await generateFn({ data: { base_year: baseYear - 1, target_year: baseYear } });
-          goalsGenerated = Number((res as { count?: number } | undefined)?.count ?? 0);
-        } catch (genErr) {
-          console.warn("Recalculo de metas notice:", genErr);
-        }
-
         return {
           type: "meta" as const,
           count: importedCount,
-          goals: goalsGenerated,
+          goals: importedCount,
         };
       }
-
     },
     onSuccess: (res) => {
       if (res.type === "realizado") {
@@ -1724,9 +1935,8 @@ function ImportWizard() {
         });
       } else {
         toast.success("Metas importadas e salvas com sucesso!", {
-          description: `${res.count} registro(s) de histórico salvos${res.goals ? ` e ${res.goals} meta(s) oficiais recalculadas` : ""}.`,
+          description: `${res.count} registros salvos no banco de dados.`,
         });
-
       }
 
       setStep("upload");
@@ -2016,23 +2226,7 @@ function ImportWizard() {
                             {r.tc !== null ? intFmt(r.tc) : "—"}
                           </TableCell>
                           <TableCell className="text-right font-bold">
-                            {r.pctAting !== null ? (
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-xs font-bold",
-                                  r.pctAting >= 100
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
-                                    : r.pctAting >= 90
-                                      ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300"
-                                      : "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300",
-                                )}
-                              >
-                                {r.pctAting.toFixed(1)}%
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
+                            <AtingimentoIndicator pct={r.pctAting} compact />
                           </TableCell>
                           <TableCell className="text-center">
                             {isOk ? (
