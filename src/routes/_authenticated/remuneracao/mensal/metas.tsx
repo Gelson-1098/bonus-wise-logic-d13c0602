@@ -1698,12 +1698,22 @@ function ImportWizard() {
           console.warn("Server importFn notice:", serverFnErr);
         }
 
+        // Recalcula as metas oficiais a partir do histórico recém-importado
+        let goalsGenerated = 0;
+        try {
+          const res = await generateFn({ data: { base_year: baseYear - 1, target_year: baseYear } });
+          goalsGenerated = Number((res as { count?: number } | undefined)?.count ?? 0);
+        } catch (genErr) {
+          console.warn("Recalculo de metas notice:", genErr);
+        }
+
         return {
           type: "meta" as const,
           count: importedCount,
-          goals: importedCount,
+          goals: goalsGenerated,
         };
       }
+
     },
     onSuccess: (res) => {
       if (res.type === "realizado") {
