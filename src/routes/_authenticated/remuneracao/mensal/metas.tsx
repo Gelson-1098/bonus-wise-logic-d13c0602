@@ -1430,6 +1430,8 @@ function ImportWizard() {
   const nowYear = new Date().getFullYear();
   const fileRef = useRef<HTMLInputElement>(null);
   const importFn = useServerFn(importRevenueHistory);
+  const generateFn = useServerFn(generateGoals);
+
   const { data: stores } = useStores();
 
   const [importMode, setImportMode] = useState<"realizado" | "meta">("realizado");
