@@ -289,7 +289,8 @@ export function matchCanonicalStore(
     (s) =>
       normalize(s.name) === normalize(matchedCs!.name) ||
       normalize(s.name) === normalize(matchedCs!.key) ||
-      (s.code && normalize(s.code) === normalize(matchedCs!.code))
+      (s.code && normalize(s.code) === normalize(matchedCs!.code)) ||
+      (matchedCs!.aliases && matchedCs!.aliases.some((a) => normalize(a) === normalize(s.name)))
   );
 
   return {

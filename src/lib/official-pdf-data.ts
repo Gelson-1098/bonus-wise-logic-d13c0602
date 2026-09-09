@@ -45,14 +45,6 @@ export const CANONICAL_STORES: CanonicalStore[] = [
     aliases: ["guarulhos gopouva", "guarulhos gopoúva", "guarulhos", "gopouva"],
   },
   {
-    key: "jabaquara",
-    name: "Jabaquara",
-    code: "JBQ",
-    city: "São Paulo",
-    state: "SP",
-    aliases: ["jabaquara", "sp jabaquara", "spoleto jabaquara", "jabaquara sp"],
-  },
-  {
     key: "jardim camburi",
     name: "Jardim Camburi",
     code: "JCB",
@@ -106,7 +98,24 @@ export const CANONICAL_STORES: CanonicalStore[] = [
     code: "SPL",
     city: "São Paulo",
     state: "SP",
-    aliases: ["spoleto", "spoleto sp", "sp spoleto", "restaurante spoleto", "loja spoleto"],
+    aliases: [
+      "spoleto",
+      "rua jabaquara",
+      "jabaquara",
+      "spoleto jabaquara",
+      "rua jabaquara sp",
+      "sp jabaquara",
+      "jabaquara sp",
+      "spoleto sp",
+      "sp spoleto",
+      "restaurante spoleto",
+      "loja spoleto",
+      "jbq",
+      "dex-jabaquara",
+      "dex jabaquara",
+      "dex-spoleto",
+      "dex spoleto",
+    ],
   },
   {
     key: "aeroporto guarulhos",
@@ -158,14 +167,14 @@ export const OFFICIAL_PDF_DATA: OfficialPdfRecord[] = [
   { storeName: "Guarulhos Gopoúva", canonicalKey: "guarulhos gopouva", month: 11, monthLabel: "nov/25", year: 2025, receita_vendas: 175339.49, taxa_servico: 0, tc: 2015, tm: 87.02 },
   { storeName: "Guarulhos Gopoúva", canonicalKey: "guarulhos gopouva", month: 12, monthLabel: "dez/25", year: 2025, receita_vendas: 176735.39, taxa_servico: 0, tc: 1923, tm: 91.91 },
 
-  // 4. Jabaquara
-  { storeName: "Jabaquara", canonicalKey: "jabaquara", month: 6, monthLabel: "jun/25", year: 2025, receita_vendas: 136073.06, taxa_servico: 0, tc: 1433, tm: 94.96 },
-  { storeName: "Jabaquara", canonicalKey: "jabaquara", month: 7, monthLabel: "jul/25", year: 2025, receita_vendas: 130163.73, taxa_servico: 0, tc: 1475, tm: 88.25 },
-  { storeName: "Jabaquara", canonicalKey: "jabaquara", month: 8, monthLabel: "ago/25", year: 2025, receita_vendas: 127714.27, taxa_servico: 0, tc: 1417, tm: 90.13 },
-  { storeName: "Jabaquara", canonicalKey: "jabaquara", month: 9, monthLabel: "set/25", year: 2025, receita_vendas: 156591.51, taxa_servico: 0, tc: 1674, tm: 93.54 },
-  { storeName: "Jabaquara", canonicalKey: "jabaquara", month: 10, monthLabel: "out/25", year: 2025, receita_vendas: 156756.57, taxa_servico: 0, tc: 1715, tm: 91.40 },
-  { storeName: "Jabaquara", canonicalKey: "jabaquara", month: 11, monthLabel: "nov/25", year: 2025, receita_vendas: 137753.07, taxa_servico: 0, tc: 1575, tm: 87.46 },
-  { storeName: "Jabaquara", canonicalKey: "jabaquara", month: 12, monthLabel: "dez/25", year: 2025, receita_vendas: 146403.66, taxa_servico: 0, tc: 1541, tm: 95.01 },
+  // 4. Spoleto (Rua Jabaquara)
+  { storeName: "Spoleto", canonicalKey: "spoleto", month: 6, monthLabel: "jun/25", year: 2025, receita_vendas: 136073.06, taxa_servico: 0, tc: 1433, tm: 94.96 },
+  { storeName: "Spoleto", canonicalKey: "spoleto", month: 7, monthLabel: "jul/25", year: 2025, receita_vendas: 130163.73, taxa_servico: 0, tc: 1475, tm: 88.25 },
+  { storeName: "Spoleto", canonicalKey: "spoleto", month: 8, monthLabel: "ago/25", year: 2025, receita_vendas: 127714.27, taxa_servico: 0, tc: 1417, tm: 90.13 },
+  { storeName: "Spoleto", canonicalKey: "spoleto", month: 9, monthLabel: "set/25", year: 2025, receita_vendas: 156591.51, taxa_servico: 0, tc: 1674, tm: 93.54 },
+  { storeName: "Spoleto", canonicalKey: "spoleto", month: 10, monthLabel: "out/25", year: 2025, receita_vendas: 156756.57, taxa_servico: 0, tc: 1715, tm: 91.40 },
+  { storeName: "Spoleto", canonicalKey: "spoleto", month: 11, monthLabel: "nov/25", year: 2025, receita_vendas: 137753.07, taxa_servico: 0, tc: 1575, tm: 87.46 },
+  { storeName: "Spoleto", canonicalKey: "spoleto", month: 12, monthLabel: "dez/25", year: 2025, receita_vendas: 146403.66, taxa_servico: 0, tc: 1541, tm: 95.01 },
 
   // 5. Jardim Camburi
   { storeName: "Jardim Camburi", canonicalKey: "jardim camburi", month: 6, monthLabel: "jun/25", year: 2025, receita_vendas: 163919.80, taxa_servico: 0, tc: 1914, tm: 85.64 },

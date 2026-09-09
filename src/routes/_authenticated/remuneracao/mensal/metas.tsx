@@ -378,13 +378,13 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
       try {
         const { data: directTargets } = await supabase
           .from("store_targets")
-          .select("revenue_actual, tc_actual, bonus_periods!inner(store_id, month, year)")
+          .select("store_id, revenue_actual, tc_actual, bonus_periods!inner(month, year)")
           .eq("bonus_periods.year", year);
 
         if (directTargets) {
           for (const dt of directTargets as any[]) {
             const m = dt.bonus_periods?.month;
-            const sId = dt.bonus_periods?.store_id;
+            const sId = dt.store_id;
             if (sId && m && (dt.revenue_actual != null || dt.tc_actual != null)) {
               if (!map.has(`${sId}-${m}`)) {
                 map.set(`${sId}-${m}`, {
