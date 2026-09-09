@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 import {
   AlertTriangle,
   ArrowRight,
@@ -13,6 +14,7 @@ import {
   Edit3,
   FileSpreadsheet,
   FileText,
+  Loader2,
   RefreshCw,
   Upload,
   XCircle,
@@ -348,7 +350,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                   className="h-8 text-xs font-semibold"
                   onClick={() => setMetric("faturamento")}
                 >
-                  Faturamento (R$)
+                  💰 Faturamento (R$)
                 </Button>
                 <Button
                   size="sm"
@@ -356,13 +358,13 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                   className="h-8 text-xs font-semibold"
                   onClick={() => setMetric("tc")}
                 >
-                  TC (Clientes)
+                  👥 TC (Atendimentos)
                 </Button>
               </div>
             </div>
           </div>
 
-          {isMaster ? (
+          {isMaster && (
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
@@ -372,8 +374,9 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                 disabled={dedupMutation.isPending}
               >
                 <RefreshCw className={cn("size-3.5 mr-1.5", dedupMutation.isPending && "animate-spin")} />
-                {dedupMutation.isPending ? "Padronizando..." : "Padronizar Lojas"}
+                Padronizar Nomes de Lojas
               </Button>
+
               <Button
                 variant="outline"
                 size="sm"
@@ -381,120 +384,84 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                 onClick={() => syncPdfMutation.mutate()}
                 disabled={syncPdfMutation.isPending}
               >
-                <RefreshCw className={cn("size-3.5 text-primary mr-1.5", syncPdfMutation.isPending && "animate-spin")} />
-                {syncPdfMutation.isPending ? "Sincronizando..." : "↻ Sincronizar Informações"}
+                <FileText className="size-3.5 mr-1.5 text-primary" />
+                Sincronizar Orçamento Oficial PDF
               </Button>
             </div>
-          ) : (
-            <Badge variant="outline" className="px-3 py-1 bg-muted/40 text-muted-foreground text-xs">
-              🔒 Orçamento Oficial Fixado (Somente Leitura)
-            </Badge>
           )}
         </CardContent>
       </Card>
 
-
-      {/* KPI Cards de Resumo */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              {metric === "faturamento" ? "Orçamento Total Faturamento" : "Orçamento Total TC"}
-            </p>
-            <p className="mt-2 text-2xl font-bold tracking-tight text-primary">
-              {metric === "faturamento" ? brl(totalPeriodMeta.metaFat) : intFmt(totalPeriodMeta.metaTc)}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Meta consolidada de Junho a Dezembro ({year})</p>
-          </CardContent>
+      {/* Cards de Resumo Consolidado do Período */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card className="p-4 border-l-4 border-l-primary">
+          <p className="text-xs font-semibold text-muted-foreground uppercase">Meta Faturamento (Jun–Dez)</p>
+          <p className="text-2xl font-black text-primary mt-1">{brl(totalPeriodMeta.metaFat)}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Base anterior: {brl(totalPeriodMeta.baseFat)} (+10%)</p>
         </Card>
 
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              {metric === "faturamento" ? `Realizado Ano Anterior (${year - 1})` : `TC Ano Anterior (${year - 1})`}
-            </p>
-            <p className="mt-2 text-2xl font-semibold tracking-tight">
-              {metric === "faturamento" ? brl(totalPeriodMeta.baseFat) : intFmt(totalPeriodMeta.baseTc)}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Base oficial do PDF</p>
-          </CardContent>
+        <Card className="p-4 border-l-4 border-l-sky-500">
+          <p className="text-xs font-semibold text-muted-foreground uppercase">Meta TC Atendimentos (Jun–Dez)</p>
+          <p className="text-2xl font-black text-sky-600 mt-1">{intFmt(totalPeriodMeta.metaTc)}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Base anterior: {intFmt(totalPeriodMeta.baseTc)} (+10%)</p>
         </Card>
 
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Crescimento Orçado</p>
-            <p className="mt-2 text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
-              + 10,00%
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Meta = Base do Ano Anterior × 110%</p>
-          </CardContent>
+        <Card className="p-4 border-l-4 border-l-emerald-500">
+          <p className="text-xs font-semibold text-muted-foreground uppercase">Lojas no Orçamento</p>
+          <p className="text-2xl font-black text-emerald-600 mt-1">{activeStores.length}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">10 unidades da rede DEX</p>
         </Card>
 
-        <Card>
-          <CardContent className="pt-5">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Gatilho de Elegibilidade</p>
-            <p className="mt-2 text-2xl font-bold tracking-tight">90,00%</p>
-            <p className="mt-1 text-xs text-muted-foreground">Atingimento ≥ 90% libera bônus integral</p>
-          </CardContent>
+        <Card className="p-4 border-l-4 border-l-amber-500">
+          <p className="text-xs font-semibold text-muted-foreground uppercase">Meses Orçados</p>
+          <p className="text-2xl font-black text-amber-600 mt-1">7 meses</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Junho a Dezembro / {year}</p>
         </Card>
       </div>
 
-      {/* Tabela Gerencial de Metas */}
+      {/* TABELA CONSOLIDADA GERAL: LOJA x ORÇADO x REALIZADO x GAP x STATUS */}
       <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <FileText className="size-4 text-primary" />
-              <span>
-                Painel de Metas {year} — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Clientes)"}
-              </span>
-            </CardTitle>
-            <CardDescription>
-              ORÇADO = Meta oficial · REALIZADO = Faturamento apurado · GAP = Realizado − Orçado · Clique na loja para detalhes mensais
-            </CardDescription>
+        <CardHeader className="py-3 px-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-sm font-bold">
+                Acompanhamento Consolidado — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Atendimentos)"} {year}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Comparativo oficial de Orçado vs Realizado acumulado do período por loja.
+              </CardDescription>
+            </div>
+            <div className="text-xs text-muted-foreground font-medium">
+              Clique em uma linha para ver o detalhamento mês a mês
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="px-0">
+        <CardContent className="px-0 pb-0">
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-background">
-                <TableRow className="bg-muted/50 font-bold text-xs uppercase tracking-wide">
-                  <TableHead className="w-[200px]">LOJA</TableHead>
-                  <TableHead className="text-right text-primary">ORÇADO</TableHead>
-                  <TableHead className="text-right">REALIZADO</TableHead>
-                  <TableHead className="text-right">GAP</TableHead>
-                  <TableHead className="text-center">STATUS</TableHead>
-                  <TableHead className="text-center w-[90px] text-muted-foreground font-normal normal-case text-xs">Detalhar</TableHead>
+              <TableHeader className="bg-muted/50 text-xs font-bold uppercase">
+                <TableRow>
+                  <TableHead className="w-[240px]">Loja</TableHead>
+                  <TableHead className="text-right w-[160px]">Orçado ({metric === "faturamento" ? "R$" : "Qtd"})</TableHead>
+                  <TableHead className="text-right w-[160px]">Realizado ({metric === "faturamento" ? "R$" : "Qtd"})</TableHead>
+                  <TableHead className="text-right w-[140px]">Diferença (Gap)</TableHead>
+                  <TableHead className="text-center w-[130px]">Status Meta</TableHead>
+                  <TableHead className="text-center w-[100px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loadingStores && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
-                      Carregando orçamento...
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loadingStores && activeStores.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
-                      Nenhuma loja ativa cadastrada.
-                    </TableCell>
-                  </TableRow>
-                )}
                 {activeStores.map((s) => {
                   const isExpanded = expandedStoreId === s.id;
-
-                  // Calcula totais da loja no período
                   let storeOrcado = 0;
                   let storeRealizado = 0;
                   let storeHasRealizado = false;
+
                   for (const pm of PDF_MONTHS) {
-                    const goal = goalMap.get(`${s.id}-${pm.month}`);
+                    const g = goalMap.get(`${s.id}-${pm.month}`);
+                    if (g) {
+                      storeOrcado += metric === "faturamento" ? Number(g.meta_faturamento) : Number(g.meta_tc);
+                    }
                     const actual = actualMap.get(`${s.id}-${pm.month}`);
-                    storeOrcado += goal
-                      ? metric === "faturamento" ? Number(goal.meta_faturamento) : Number(goal.meta_tc)
-                      : 0;
                     const rev = metric === "faturamento"
                       ? actual?.revenue_actual
                       : actual?.tc_actual;
@@ -748,171 +715,172 @@ function StoreDetailCard({
               </span>
               <span className="inline-flex items-center gap-1 text-muted-foreground">
                 <span className="inline-block w-2.5 h-2.5 rounded-sm bg-muted border border-muted-foreground/30" />
-                Meta Histórica — Referência bloqueada (base {year - 1} + crescimento %)
+                Base {year - 1} (+10%)
               </span>
             </CardDescription>
           </div>
-          {!isMaster && (
-            <Badge variant="outline" className="text-xs bg-muted/40 shrink-0">
-              🔒 Meta Fixa
-            </Badge>
+
+          {/* Badge Resumo Geral da Loja */}
+          {hasRealizado && (
+            <div className="flex items-center gap-2">
+              <Badge
+                className={cn(
+                  "font-bold text-xs px-3 py-1 shadow-sm",
+                  totalBateu ? "bg-emerald-600 text-white" : "bg-destructive text-white",
+                )}
+              >
+                {totalBateu ? "✓ META ANUAL ATINGIDA" : "✗ META ANUAL NÃO ATINGIDA"}
+              </Badge>
+            </div>
           )}
         </div>
       </CardHeader>
-      <CardContent className="px-0">
+      <CardContent className="px-0 pb-0">
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50 text-xs font-bold sticky top-0 z-10">
-                <TableHead className="text-center font-bold">PERÍODO</TableHead>
-                <TableHead className="text-right font-bold">
-                  <div className="text-primary">META OBRIGATÓRIA</div>
-                  <div className="text-[9px] font-normal text-muted-foreground normal-case">base oficial do cálculo</div>
+            <TableHeader className="bg-muted/40 text-xs font-semibold">
+              <TableRow>
+                <TableHead className="w-[110px]">Mês / Período</TableHead>
+                <TableHead className="text-right w-[150px]">Base {year - 1}</TableHead>
+                <TableHead className="text-right w-[160px] font-bold text-primary bg-primary/5">
+                  Meta Obrigatória {year}
                 </TableHead>
-                <TableHead className="text-right font-bold">
-                  <div>REALIZADO</div>
+                <TableHead className="text-right w-[160px] font-bold">
+                  Faturamento Realizado
                 </TableHead>
-                <TableHead className="text-right font-bold">GAP</TableHead>
-                <TableHead className="text-center font-bold">STATUS</TableHead>
-                {isMaster && <TableHead className="text-center text-muted-foreground font-normal text-[10px]">Ações</TableHead>}
+                <TableHead className="text-right w-[130px]">Diferença (Gap)</TableHead>
+                <TableHead className="text-right w-[110px]">% Atingimento</TableHead>
+                <TableHead className="text-center w-[130px]">Status do Mês</TableHead>
+                {isMaster && <TableHead className="text-center w-[90px]">Editar</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map(({ pm, goal, orcado, realizado, gap, pct, bateu }) => {
-                // Meta Histórica = base ano anterior × crescimento (referência bloqueada)
-                const baseHist = goal ? Number(goal.faturamento_base_ano_anterior) : 0;
-                const growthPct = goal ? Number(goal.growth_fat_pct ?? 10) : 10;
-                const metaHistorica = baseHist > 0 ? baseHist * (1 + growthPct / 100) : null;
-                // Meta Obrigatória = meta_faturamento (pode ser editada pelo Master)
-                const metaObrigatoria = orcado;
-                const isEdited = metaHistorica !== null && Math.abs(metaObrigatoria - metaHistorica) > 0.5;
+              {rows.map(({ pm, goal, orcado, realizado, gap, pct, bateu }) => (
+                <TableRow
+                  key={pm.month}
+                  className={cn(
+                    "text-xs transition-colors",
+                    bateu === true && "bg-emerald-50/40 dark:bg-emerald-950/20",
+                    bateu === false && "bg-red-50/40 dark:bg-red-950/20",
+                  )}
+                >
+                  <TableCell className="font-bold">
+                    {pm.label} ({pm.full})
+                  </TableCell>
 
-                return (
-                  <TableRow
-                    key={pm.month}
-                    className={cn(
-                      "text-xs hover:bg-muted/20 transition-colors",
-                      bateu === true && "bg-emerald-50/30 dark:bg-emerald-950/10",
-                      bateu === false && "bg-red-50/30 dark:bg-red-950/10",
+                  {/* BASE ANO ANTERIOR */}
+                  <TableCell className="text-right text-muted-foreground">
+                    {goal?.faturamento_base_ano_anterior != null
+                      ? brl(goal.faturamento_base_ano_anterior)
+                      : "—"}
+                  </TableCell>
+
+                  {/* META OBRIGATÓRIA */}
+                  <TableCell className="text-right font-extrabold text-primary bg-primary/5 text-xs">
+                    {orcado > 0 ? brl(orcado) : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+
+                  {/* FATURAMENTO REALIZADO */}
+                  <TableCell className="text-right font-bold">
+                    {realizado !== null ? (
+                      <span className={cn(
+                        bateu === true && "text-emerald-700 dark:text-emerald-400 font-extrabold",
+                        bateu === false && "text-red-700 dark:text-red-400 font-extrabold",
+                      )}>
+                        {brl(realizado)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground italic">Pendente</span>
                     )}
-                  >
-                    {/* PERÍODO */}
-                    <TableCell className="text-center font-semibold text-xs">
-                      {pm.full}
-                    </TableCell>
+                  </TableCell>
 
-                    {/* META OBRIGATÓRIA */}
-                    <TableCell className="text-right text-xs">
-                      {/* Meta Obrigatória — base do cálculo */}
-                      <div className={cn("font-bold text-primary", isEdited && "text-amber-700 dark:text-amber-400")}>
-                        {metaObrigatoria > 0 ? brl(metaObrigatoria) : <span className="text-muted-foreground">—</span>}
-                        {isEdited && (
-                          <span className="ml-1 text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 border border-amber-300/50 rounded px-1">
-                            ajustada
-                          </span>
-                        )}
-                      </div>
-                      {/* Meta Histórica — referência bloqueada */}
-                      {metaHistorica !== null && (
-                        <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1 justify-end">
-                          <span className="text-[9px]">🔒</span>
-                          <span>Hist.: {brl(metaHistorica)}</span>
-                        </div>
-                      )}
-                    </TableCell>
-
-                    {/* REALIZADO */}
-                    <TableCell className="text-right font-semibold text-xs">
-                      {realizado !== null ? (
-                        <span className={cn(
-                          bateu === true && "text-emerald-700 dark:text-emerald-400",
-                          bateu === false && "text-red-700 dark:text-red-400",
-                        )}>
-                          {brl(realizado)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">Não lançado</span>
-                      )}
-                    </TableCell>
-
-                    {/* GAP */}
-                    <TableCell className="text-right font-bold text-xs">
-                      {gap !== null ? (
-                        <span className={cn(
-                          gap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400",
-                        )}>
-                          {gap >= 0 ? "+" : ""}{brl(gap)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-
-                    {/* STATUS */}
-                    <TableCell className="text-center whitespace-nowrap">
-                      {bateu === null ? (
-                        <span className="text-muted-foreground text-[10px]">Aguardando</span>
-                      ) : bateu ? (
-                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5 shadow-sm">
-                          🟢 META BATIDA
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
-                          🔴 NÃO BATIDA
-                        </Badge>
-                      )}
-                      {pct !== null && (
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{pct.toFixed(1)}%</p>
-                      )}
-                    </TableCell>
-
-                    {/* AÇÕES MASTER */}
-                    {isMaster && (
-                      <TableCell className="text-center">
-                        {goal ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 text-[11px] px-2 text-primary hover:text-primary"
-                            onClick={() =>
-                              onEditGoal({
-                                goalId: goal.id,
-                                storeName,
-                                storeId,
-                                year,
-                                month: pm.month,
-                                faturamentoBase: goal ? Number(goal.faturamento_base_ano_anterior) : 0,
-                                metaFaturamento: goal ? Number(goal.meta_faturamento) : 0,
-                                tcBase: goal ? Number(goal.tc_ano_anterior) : 0,
-                                metaTc: goal ? Number(goal.meta_tc) : 0,
-                              })
-                            }
-                          >
-                            <Edit3 className="size-3 mr-1" /> Editar
-                          </Button>
-                        ) : (
-                          <span className="text-muted-foreground text-[11px]">Sem meta</span>
-                        )}
-                      </TableCell>
+                  {/* GAP (DIFERENÇA) */}
+                  <TableCell className="text-right font-bold">
+                    {gap !== null ? (
+                      <span className={gap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}>
+                        {gap >= 0 ? "+" : ""}{brl(gap)}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
                     )}
-                  </TableRow>
-                );
-              })}
+                  </TableCell>
 
-              {/* TOTAL ANUAL */}
-              <TableRow className={cn(
-                "font-extrabold border-t-2 text-sm",
-                totalBateu === true && "bg-emerald-100/60 dark:bg-emerald-900/20",
-                totalBateu === false && "bg-red-100/40 dark:bg-red-900/10",
-                totalBateu === null && "bg-muted/40",
-              )}>
-                <TableCell className="text-center font-extrabold text-xs uppercase tracking-wide">
-                  TOTAL ANUAL
+                  {/* % ATINGIMENTO */}
+                  <TableCell className="text-right font-bold">
+                    {pct !== null ? (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-xs font-bold",
+                          pct >= 100
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
+                            : pct >= 90
+                              ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300"
+                              : "bg-red-50 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300",
+                        )}
+                      >
+                        {pct.toFixed(1)}%
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+
+                  {/* STATUS */}
+                  <TableCell className="text-center">
+                    {bateu === null ? (
+                      <span className="text-muted-foreground text-xs">Aguardando</span>
+                    ) : bateu ? (
+                      <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5 shadow-sm">
+                        🟢 META BATIDA
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5">
+                        🔴 NÃO BATIDA
+                      </Badge>
+                    )}
+                  </TableCell>
+
+                  {/* BOTÃO EDITAR (MASTER) */}
+                  {isMaster && (
+                    <TableCell className="text-center">
+                      {goal && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[11px] px-2 text-primary hover:text-primary"
+                          onClick={() =>
+                            onEditGoal({
+                              goalId: goal.id,
+                              storeName,
+                              storeId,
+                              year,
+                              month: pm.month,
+                              faturamentoBase: Number(goal.faturamento_base_ano_anterior),
+                              metaFaturamento: Number(goal.meta_faturamento),
+                              tcBase: Number(goal.tc_ano_anterior),
+                              metaTc: Number(goal.meta_tc),
+                            })
+                          }
+                        >
+                          <Edit3 className="size-3 mr-1" /> Editar
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+
+              {/* Linha de Total da Loja */}
+              <TableRow className="bg-muted/50 font-extrabold border-t-2">
+                <TableCell className="font-extrabold uppercase">TOTAL {year}</TableCell>
+                <TableCell className="text-right font-bold text-muted-foreground">
+                  {brl(rows.reduce((s, r) => s + (Number(r.goal?.faturamento_base_ano_anterior) || 0), 0))}
                 </TableCell>
-                <TableCell className="text-right font-extrabold text-primary text-xs">
-                  {totalOrcado > 0 ? brl(totalOrcado) : "—"}
+                <TableCell className="text-right font-extrabold text-primary bg-primary/5">
+                  {brl(totalOrcado)}
                 </TableCell>
-                <TableCell className="text-right font-extrabold text-xs">
+                <TableCell className="text-right font-extrabold">
                   {hasRealizado ? (
                     <span className={cn(
                       totalBateu === true && "text-emerald-700 dark:text-emerald-400",
@@ -920,24 +888,45 @@ function StoreDetailCard({
                     )}>
                       {brl(totalRealizado)}
                     </span>
-                  ) : "—"}
+                  ) : (
+                    "—"
+                  )}
                 </TableCell>
-                <TableCell className="text-right font-extrabold text-xs">
+                <TableCell className="text-right font-extrabold">
                   {totalGap !== null ? (
                     <span className={totalGap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}>
                       {totalGap >= 0 ? "+" : ""}{brl(totalGap)}
                     </span>
-                  ) : "—"}
+                  ) : (
+                    "—"
+                  )}
+                </TableCell>
+                <TableCell className="text-right font-extrabold">
+                  {hasRealizado && totalOrcado > 0 ? (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-xs font-bold",
+                        (totalRealizado / totalOrcado) * 100 >= 100
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                          : "bg-red-50 text-red-700 border-red-300",
+                      )}
+                    >
+                      {((totalRealizado / totalOrcado) * 100).toFixed(1)}%
+                    </Badge>
+                  ) : (
+                    "—"
+                  )}
                 </TableCell>
                 <TableCell className="text-center">
                   {totalBateu === null ? (
                     <span className="text-muted-foreground text-xs">Aguardando</span>
                   ) : totalBateu ? (
-                    <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] px-3 py-1 shadow">
-                      🟢 META BATIDA
+                    <Badge className="bg-emerald-600 text-white font-bold text-[10px]">
+                      🟢 BATIDA
                     </Badge>
                   ) : (
-                    <Badge variant="destructive" className="font-extrabold text-[11px] px-3 py-1">
+                    <Badge variant="destructive" className="font-bold text-[10px]">
                       🔴 NÃO BATIDA
                     </Badge>
                   )}
@@ -952,7 +941,7 @@ function StoreDetailCard({
   );
 }
 
-/* -------------------------------- Modal de Edição de Meta (Exclusivo Master) */
+/* ------------------------------------------------ Modal de Ajuste Manual da Meta */
 
 function EditGoalModal({
   payload,
@@ -966,6 +955,8 @@ function EditGoalModal({
   const updateFn = useServerFn(updateStoreGoalManual);
   const [metaFat, setMetaFat] = useState(String(payload.metaFaturamento));
   const [metaTc, setMetaTc] = useState(String(payload.metaTc));
+  const [baseFat, setBaseFat] = useState(String(payload.faturamentoBase));
+  const [baseTc, setBaseTc] = useState(String(payload.tcBase));
   const [reason, setReason] = useState("");
 
   const updateMutation = useMutation({
@@ -975,127 +966,119 @@ function EditGoalModal({
           goal_id: payload.goalId,
           meta_faturamento: Number(metaFat),
           meta_tc: Number(metaTc),
+          faturamento_base: Number(baseFat),
+          tc_base: Number(baseTc),
           reason: reason.trim(),
         },
       }),
     onSuccess: () => {
       toast.success("Meta atualizada com sucesso!", {
-        description: "A alteração e o motivo foram registrados na trilha de auditoria.",
+        description: `Meta de ${payload.storeName} (${MONTHS[payload.month - 1]}/${payload.year}) ajustada e registrada na auditoria.`,
       });
       onSaved();
     },
-    onError: (e: Error) => toast.error("Erro ao atualizar meta", { description: e.message }),
+    onError: (e: Error) => toast.error("Falha ao salvar meta", { description: e.message }),
   });
 
   return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
+          <DialogTitle className="text-base flex items-center gap-2">
             <Edit3 className="size-4 text-primary" />
-            <span>Editar Meta Obrigatória — {payload.storeName}</span>
+            <span>Editar Meta — {payload.storeName}</span>
           </DialogTitle>
-          <DialogDescription>
-            Competência: <strong>{periodLabel(payload.month, payload.year)}</strong>. Exclusivo para o Master com registro obrigatório em auditoria.
+          <DialogDescription className="text-xs">
+            Competência: <strong>{MONTHS[payload.month - 1]} / {payload.year}</strong>. Qualquer alteração fica gravada no log oficial de auditoria.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Seção: Meta Histórica (bloqueada) */}
-          <div className="rounded-lg border border-muted bg-muted/30 p-3 text-xs space-y-2">
-            <p className="font-semibold text-muted-foreground text-[11px] uppercase tracking-wide flex items-center gap-1">
-              🔒 Meta Histórica — Referência Bloqueada
-            </p>
-            <p className="text-[10px] text-muted-foreground">
-              Valor calculado automaticamente com base no ano anterior. <strong>Não pode ser alterado.</strong> Serve apenas como referência comparativa.
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2 text-center">
-              <div className="rounded border border-muted bg-background px-3 py-2">
-                <p className="text-muted-foreground text-[10px]">Base FAT {payload.year - 1}</p>
-                <p className="font-semibold">{brl(payload.faturamentoBase)}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Meta Hist. = {brl(payload.faturamentoBase * 1.10)}
-                </p>
-              </div>
-              <div className="rounded border border-muted bg-background px-3 py-2">
-                <p className="text-muted-foreground text-[10px]">Base TC {payload.year - 1}</p>
-                <p className="font-semibold">{intFmt(payload.tcBase)}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Meta Hist. TC = {intFmt(Math.round(payload.tcBase * 1.10))}
-                </p>
-              </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="baseFat" className="text-xs font-semibold">
+                Base Faturamento Anterior (R$)
+              </Label>
+              <Input
+                id="baseFat"
+                type="number"
+                step="0.01"
+                value={baseFat}
+                onChange={(e) => setBaseFat(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="metaFat" className="text-xs font-bold text-primary">
+                Meta Faturamento Oficial (R$)
+              </Label>
+              <Input
+                id="metaFat"
+                type="number"
+                step="0.01"
+                value={metaFat}
+                onChange={(e) => setMetaFat(e.target.value)}
+                className="font-bold border-primary/50 focus-visible:ring-primary"
+              />
             </div>
           </div>
 
-          {/* Seção: Meta Obrigatória (editável) */}
-          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs space-y-3">
-            <p className="font-semibold text-primary text-[11px] uppercase tracking-wide">
-              ✏️ Meta Obrigatória — Base Oficial do Cálculo de Atingimento
-            </p>
-            <p className="text-[10px] text-muted-foreground">
-              Este é o valor usado para calcular o atingimento. Pode ser ajustado pelo Master quando necessário (ex: reforma, alinhamento de diretoria). Toda alteração é registrada em auditoria.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="edit-meta-fat" className="text-xs font-bold">
-                  Meta Obrigatória — Faturamento (R$)
-                </Label>
-                <Input
-                  id="edit-meta-fat"
-                  type="number"
-                  step="0.01"
-                  value={metaFat}
-                  onChange={(e) => setMetaFat(e.target.value)}
-                />
-                {Math.abs(Number(metaFat) - payload.faturamentoBase * 1.10) > 0.5 && (
-                  <p className="text-[10px] text-amber-600">
-                    ⚠️ Diferente da Meta Histórica ({brl(payload.faturamentoBase * 1.10)})
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="edit-meta-tc" className="text-xs font-bold">
-                  Meta Obrigatória — TC (Clientes)
-                </Label>
-                <Input
-                  id="edit-meta-tc"
-                  type="number"
-                  step="1"
-                  value={metaTc}
-                  onChange={(e) => setMetaTc(e.target.value)}
-                />
-                {Math.abs(Number(metaTc) - payload.tcBase * 1.10) > 0.5 && (
-                  <p className="text-[10px] text-amber-600">
-                    ⚠️ Diferente da Meta Histórica TC ({intFmt(Math.round(payload.tcBase * 1.10))})
-                  </p>
-                )}
-              </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="baseTc" className="text-xs font-semibold">
+                Base TC Anterior (Qtd)
+              </Label>
+              <Input
+                id="baseTc"
+                type="number"
+                value={baseTc}
+                onChange={(e) => setBaseTc(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="metaTc" className="text-xs font-bold text-sky-600">
+                Meta TC Oficial (Qtd)
+              </Label>
+              <Input
+                id="metaTc"
+                type="number"
+                value={metaTc}
+                onChange={(e) => setMetaTc(e.target.value)}
+                className="font-bold border-sky-400 focus-visible:ring-sky-500"
+              />
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="edit-reason" className="text-xs font-bold text-destructive">
-              Motivo da Alteração (Obrigatório para Auditoria) *
+          <div className="space-y-1.5 pt-1">
+            <Label htmlFor="reason" className="text-xs font-semibold flex items-center gap-1">
+              <span>Justificativa da Alteração</span>
+              <span className="text-destructive font-bold">*</span>
             </Label>
             <Textarea
-              id="edit-reason"
-              rows={3}
-              placeholder="Descreva a justificativa para o ajuste da Meta Obrigatória (ex: reforma, abertura antecipada, alinhamento diretoria)..."
+              id="reason"
+              placeholder="Ex: Ajuste orçamentário aprovado pela diretoria; correção de lançamento retroativo..."
               value={reason}
               onChange={(e) => setReason(e.target.value)}
+              rows={2}
+              className="text-xs"
             />
+            <p className="text-[11px] text-muted-foreground">
+              Obrigatório informar a justificativa para rastreabilidade em auditoria.
+            </p>
           </div>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose}>
             Cancelar
           </Button>
           <Button
             onClick={() => updateMutation.mutate()}
             disabled={!reason.trim() || reason.trim().length < 3 || updateMutation.isPending}
+            className="font-bold bg-primary"
           >
-            Salvar Meta Obrigatória e Registrar em Auditoria
+            {updateMutation.isPending ? "Salvando..." : "Salvar Alteração"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1434,100 +1417,6 @@ function GrowthSettings() {
   );
 }
 
-/* --------------------------------------------------------- Column auto-read card */
-
-function ColumnAutoReadCard({
-  headers,
-  map,
-  setMap,
-}: {
-  headers: string[];
-  map: ColumnMap;
-  setMap: React.Dispatch<React.SetStateAction<ColumnMap>>;
-}) {
-  const [showManual, setShowManual] = useState(false);
-
-  return (
-    <Card className={cn(showManual ? "border-amber-400/60" : "border-dashed border-muted/60")}>
-      <CardHeader className="pb-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              {showManual ? (
-                <span className="text-amber-600">⚙️ Ajuste Manual de Leitura</span>
-              ) : (
-                <span className="text-emerald-700 dark:text-emerald-400">✓ Leitura automática concluída</span>
-              )}
-            </CardTitle>
-            {!showManual && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                O sistema identificou automaticamente: Loja, Período, Faturamento, Taxa de Entrega e TC.
-                Se algo estiver incorreto, clique em "Ajustar".
-              </p>
-            )}
-          </div>
-          <Button
-            size="sm"
-            variant={showManual ? "default" : "outline"}
-            className="text-xs h-7 shrink-0"
-            onClick={() => setShowManual((v) => !v)}
-          >
-            {showManual ? "✓ Fechar ajuste" : "⚙️ Ajustar leitura manualmente"}
-          </Button>
-        </div>
-      </CardHeader>
-      {showManual && (
-        <CardContent>
-          <div className="rounded-md border overflow-hidden mb-3">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30 text-xs">
-                  <TableHead>Informação</TableHead>
-                  <TableHead>Identificação encontrada</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(
-                  [
-                    ["store", "Loja"],
-                    ["month", "Período / Mês"],
-                    ["receita", "Faturamento"],
-                    ["taxa", "Taxa de Entrega/Serviço"],
-                    ["tc", "TC — Total de Atendimentos"],
-                  ] as Array<[keyof ColumnMap, string]>
-                ).map(([key, label]) => (
-                  <TableRow key={key} className="text-xs">
-                    <TableCell className="font-medium">{label}</TableCell>
-                    <TableCell>
-                      <Select
-                        value={map[key] || "none"}
-                        onValueChange={(v) => setMap((m) => ({ ...m, [key]: v === "none" ? "" : v }))}
-                      >
-                        <SelectTrigger className="text-xs h-7">
-                          <SelectValue placeholder="Não detectado" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">— não usar —</SelectItem>
-                          {headers.map((h) => (
-                            <SelectItem key={h} value={h}>{h}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {!map[key] && (
-                        <p className="text-[10px] text-amber-600 mt-0.5">Não detectado automaticamente</p>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      )}
-    </Card>
-  );
-}
-
 /* --------------------------------------------------------- Import wizard */
 
 type Step = "upload" | "review";
@@ -1541,7 +1430,6 @@ function ImportWizard() {
   const nowYear = new Date().getFullYear();
   const fileRef = useRef<HTMLInputElement>(null);
   const importFn = useServerFn(importRevenueHistory);
-  const importActualFn = useServerFn(importActualRevenue);
   const { data: stores } = useStores();
 
   const [importMode, setImportMode] = useState<"realizado" | "meta">("realizado");
@@ -1550,16 +1438,27 @@ function ImportWizard() {
   const [baseYear, setBaseYear] = useState(nowYear);
   const [workbook, setWorkbook] = useState<any>(null);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [isLoadingFile, setIsLoadingFile] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Goals from database to cross-reference budget / orçado in the review table
   const existingGoalsQuery = useQuery({
     queryKey: ["store-goals", baseYear],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("store_goals")
-        .select("store_id, month, meta_faturamento, meta_tc, faturamento_base_ano_anterior")
-        .eq("year", baseYear);
-      return data ?? [];
+      try {
+        const { data, error } = await supabase
+          .from("store_goals")
+          .select("store_id, month, meta_faturamento, meta_tc, faturamento_base_ano_anterior")
+          .eq("year", baseYear);
+        if (error) {
+          console.warn("store_goals query:", error);
+          return [];
+        }
+        return data ?? [];
+      } catch (err) {
+        console.warn("store_goals fetch error:", err);
+        return [];
+      }
     },
   });
 
@@ -1578,15 +1477,20 @@ function ImportWizard() {
   // Automatic parsing result
   const autoResult = useMemo<AutoImportResult | null>(() => {
     if (!workbook) return null;
-    return parseWorkbookAuto(workbook, baseYear, stores ?? [], overrides);
+    try {
+      return parseWorkbookAuto(workbook, baseYear, stores ?? [], overrides);
+    } catch (e) {
+      console.error("parseWorkbookAuto error:", e);
+      return null;
+    }
   }, [workbook, baseYear, stores, overrides]);
 
   async function onFile(file: File) {
+    setIsLoadingFile(true);
+    setLoadError(null);
     try {
-      const XLSX = await import("xlsx");
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { cellDates: true, raw: true });
-      (wb as any).XLSX = XLSX;
       setWorkbook(wb);
       setFileName(file.name);
       setStep("review");
@@ -1594,7 +1498,11 @@ function ImportWizard() {
         description: "Confira a tabela de conferência abaixo com todas as lojas identificadas.",
       });
     } catch (e) {
-      toast.error("Não foi possível ler a planilha", { description: (e as Error).message });
+      const msg = e instanceof Error ? e.message : "Erro desconhecido ao ler a planilha";
+      setLoadError(msg);
+      toast.error("Não foi possível ler a planilha", { description: msg });
+    } finally {
+      setIsLoadingFile(false);
     }
   }
 
@@ -1649,48 +1557,151 @@ function ImportWizard() {
         throw new Error("Nenhum registro válido para salvar.");
       }
 
-      if (importMode === "realizado") {
-        const payload = validRows.map((r: EnhancedReviewRow) => ({
-          store_id: r.storeId!,
-          month: r.month,
-          revenue_actual: Number(r.faturamentoRealizado ?? 0),
-          tc_actual: Number(r.tc ?? 0),
-        }));
+      const { data: { user } } = await supabase.auth.getUser();
 
-        const res = await importActualFn({
-          data: {
-            year: baseYear,
-            source_file: fileName || null,
-            rows: payload,
-          },
-        });
+      if (importMode === "realizado") {
+        let updatedCount = 0;
+
+        for (const r of validRows) {
+          // Check or create bonus_period
+          let { data: period, error: pFindErr } = await supabase
+            .from("bonus_periods")
+            .select("id")
+            .eq("store_id", r.storeId!)
+            .eq("month", r.month)
+            .eq("year", baseYear)
+            .maybeSingle();
+
+          if (pFindErr) {
+            console.warn("Erro ao buscar período:", pFindErr);
+          }
+
+          if (!period) {
+            const { data: newPeriod, error: pErr } = await supabase
+              .from("bonus_periods")
+              .insert({
+                store_id: r.storeId!,
+                month: r.month,
+                year: baseYear,
+                status: "aberto",
+              })
+              .select("id")
+              .single();
+
+            if (pErr) {
+              console.error("Erro ao criar período:", pErr);
+              continue;
+            }
+            period = newPeriod;
+          }
+
+          const { data: target } = await supabase
+            .from("store_targets")
+            .select("id")
+            .eq("period_id", period.id)
+            .maybeSingle();
+
+          if (target) {
+            const { error: updErr } = await supabase
+              .from("store_targets")
+              .update({
+                revenue_actual: Number(r.faturamentoRealizado ?? 0),
+                tc_actual: Number(r.tc ?? 0),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", target.id);
+            if (updErr) throw new Error(updErr.message);
+          } else {
+            const { error: insErr } = await supabase
+              .from("store_targets")
+              .insert({
+                period_id: period.id,
+                store_id: r.storeId!,
+                revenue_actual: Number(r.faturamentoRealizado ?? 0),
+                tc_actual: Number(r.tc ?? 0),
+                target_calculated: 0,
+              } as any);
+            if (insErr) throw new Error(insErr.message);
+          }
+          updatedCount += 1;
+        }
+
+        if (user) {
+          try {
+            await supabase.from("audit_logs").insert({
+              user_id: user.id,
+              action: "importacao_realizado",
+              entity: "store_targets",
+              description: `Importação de faturamento realizado para ${baseYear}: ${updatedCount} registros gravados com sucesso.`,
+            });
+          } catch (auditErr) {
+            console.warn("Audit log error:", auditErr);
+          }
+        }
 
         return {
           type: "realizado" as const,
-          count: res.count,
+          count: updatedCount,
         };
       } else {
-        const payload = validRows.map((r: EnhancedReviewRow) => ({
-          store_id: r.storeId!,
-          month: r.month,
-          receita_vendas: Number(r.faturamentoBaseAnoAnterior ?? r.faturamentoOrcado ?? 0),
-          taxa_servico: 0,
-          tc: Number(r.tc ?? 0),
-        }));
+        // Historical metas mode
+        let importedCount = 0;
 
-        const res = await importFn({
-          data: {
-            base_year: baseYear - 1,
-            replace: true,
+        for (const r of validRows) {
+          const payload = {
+            store_id: r.storeId!,
+            year: baseYear - 1,
+            month: r.month,
+            receita_vendas: Number(r.faturamentoBaseAnoAnterior ?? r.faturamentoOrcado ?? 0),
+            taxa_servico: 0,
+            tc: Number(r.tc ?? 0),
             source_file: fileName || null,
-            rows: payload,
-          },
-        });
+            imported_at: new Date().toISOString(),
+            imported_by: user?.id ?? null,
+          };
+
+          const { data: prev } = await supabase
+            .from("revenue_history")
+            .select("id")
+            .eq("store_id", r.storeId!)
+            .eq("year", baseYear - 1)
+            .eq("month", r.month)
+            .maybeSingle();
+
+          if (prev) {
+            const { error } = await supabase.from("revenue_history").update(payload).eq("id", prev.id);
+            if (error) throw new Error(error.message);
+          } else {
+            const { error } = await supabase.from("revenue_history").insert(payload);
+            if (error) throw new Error(error.message);
+          }
+          importedCount += 1;
+        }
+
+        // Try server generate fallback
+        try {
+          await importFn({
+            data: {
+              base_year: baseYear - 1,
+              replace: true,
+              source_file: fileName || null,
+              rows: validRows.map((r) => ({
+                store_id: r.storeId!,
+                month: r.month,
+                receita_vendas: Number(r.faturamentoBaseAnoAnterior ?? r.faturamentoOrcado ?? 0),
+                taxa_servico: 0,
+                tc: Number(r.tc ?? 0),
+              })),
+            },
+          });
+        } catch (serverFnErr) {
+          console.warn("Server importFn notice:", serverFnErr);
+        }
 
         return {
           type: "meta" as const,
-          count: res.imported,
-          goals: res.goals,
+          count: importedCount,
+          goals: importedCount,
         };
       }
     },
@@ -1701,7 +1712,7 @@ function ImportWizard() {
         });
       } else {
         toast.success("Metas importadas e salvas com sucesso!", {
-          description: `${res.count} registros salvos e ${res.goals} meta(s) geradas para ${baseYear}.`,
+          description: `${res.count} registros salvos no banco de dados.`,
         });
       }
 
@@ -1800,8 +1811,20 @@ function ImportWizard() {
               }}
             />
 
-            <Button onClick={() => fileRef.current?.click()} className="font-bold text-xs">
-              <Upload className="size-4 mr-1.5" /> Selecionar e Carregar Planilha Excel
+            <Button
+              onClick={() => fileRef.current?.click()}
+              disabled={isLoadingFile}
+              className="font-bold text-xs"
+            >
+              {isLoadingFile ? (
+                <>
+                  <Loader2 className="size-4 mr-1.5 animate-spin" /> Processando Arquivo...
+                </>
+              ) : (
+                <>
+                  <Upload className="size-4 mr-1.5" /> Selecionar e Carregar Planilha Excel
+                </>
+              )}
             </Button>
 
             {fileName && (
@@ -1810,6 +1833,14 @@ function ImportWizard() {
               </span>
             )}
           </div>
+
+          {loadError && (
+            <Alert variant="destructive" className="mt-2">
+              <AlertTriangle className="size-4" />
+              <AlertTitle>Erro ao ler o arquivo</AlertTitle>
+              <AlertDescription>{loadError}</AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
 

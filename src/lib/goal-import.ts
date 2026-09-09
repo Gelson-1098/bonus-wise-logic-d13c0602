@@ -1,3 +1,4 @@
+import * as XLSX from "xlsx";
 import { MONTHS } from "@/lib/format";
 import { CANONICAL_STORES, type CanonicalStore } from "@/lib/official-pdf-data";
 
@@ -317,205 +318,230 @@ export function parseWorkbookAuto(
   const detectedStores = new Set<string>();
   const unmappedStores = new Set<string>();
 
-  const sheetNames = (wb.SheetNames || []) as string[];
+  if (!wb) {
+    return {
+      rows: [],
+      detectedStoresCount: 0,
+      totalRowsFound: 0,
+      totalFaturamentoRealizado: 0,
+      totalFaturamentoOrcado: 0,
+      unmappedStores: [],
+      detectedStores: [],
+    };
+  }
 
-  for (const sheetName of sheetNames) {
-    if (normalize(sheetName).includes("parametro") || normalize(sheetName).includes("config")) continue;
+  try {
+    const sheetNames = (wb.SheetNames || []) as string[];
+    const xlsxLib = XLSX;
 
-    const ws = wb.Sheets[sheetName];
-    const rawRows =
-      ((wb.XLSX || (globalThis as any).XLSX)?.utils?.sheet_to_json(ws, { header: 1, defval: "" }) as unknown[][]) || [];
-    if (!rawRows || rawRows.length < 2) continue;
+    for (const sheetName of sheetNames) {
+      if (normalize(sheetName).includes("parametro") || normalize(sheetName).includes("config")) continue;
 
-    const sheetMonthObj = parseSmartMonthAndYear(sheetName, defaultYear);
+      const ws = wb.Sheets?.[sheetName];
+      if (!ws) continue;
 
-    // Find table header row
-    let headerRowIdx = -1;
-    let headerCols: string[] = [];
-
-    for (let r = 0; r < Math.min(rawRows.length, 25); r++) {
-      const row = rawRows[r];
-      if (!Array.isArray(row)) continue;
-
-      const nonEmpties = row.filter((c) => String(c || "").trim() !== "");
-      if (nonEmpties.length < 2) continue;
-
-      const rowText = row.map((c) => String(c || "").toLowerCase().trim()).join(" ");
-
-      // Ignore title/metadata banners
-      if (
-        rowText.includes("empresa:") ||
-        rowText.includes("resumo de venda") ||
-        rowText.includes("periodo de:") ||
-        rowText.includes("quebra por filial")
-      ) {
+      let rawRows: unknown[][] = [];
+      try {
+        rawRows = (xlsxLib.utils.sheet_to_json(ws, { header: 1, defval: "" }) as unknown[][]) || [];
+      } catch (sheetErr) {
+        console.warn("Erro ao ler aba:", sheetName, sheetErr);
         continue;
       }
 
-      if (
-        rowText.includes("filial") ||
-        rowText.includes("loja") ||
-        rowText.includes("unidade") ||
-        rowText.includes("sigla") ||
-        (rowText.includes("mes") && (rowText.includes("venda") || rowText.includes("faturamento") || rowText.includes("total") || rowText.includes("offline")))
-      ) {
-        headerRowIdx = r;
-        headerCols = row.map((c) => String(c || "").trim());
+      if (!rawRows || rawRows.length < 2) continue;
 
-        // Merge sub-headers if next row contains UF, FILIAL, NOME
-        if (r + 1 < rawRows.length) {
-          const nextRow = rawRows[r + 1];
-          if (
-            Array.isArray(nextRow) &&
-            nextRow.some(
-              (c) =>
-                String(c || "").toLowerCase().includes("filial") ||
-                String(c || "").toLowerCase().includes("nome") ||
-                String(c || "").toLowerCase().includes("uf")
-            )
-          ) {
-            headerCols = headerCols.map((c, idx) => {
-              const sub = String(nextRow[idx] || "").trim();
-              return sub ? (c ? `${c} - ${sub}` : sub) : c;
-            });
-            headerRowIdx = r + 1;
-          }
+      const sheetMonthObj = parseSmartMonthAndYear(sheetName, defaultYear);
+
+      // Find table header row
+      let headerRowIdx = -1;
+      let headerCols: string[] = [];
+
+      for (let r = 0; r < Math.min(rawRows.length, 25); r++) {
+        const row = rawRows[r];
+        if (!Array.isArray(row)) continue;
+
+        const nonEmpties = row.filter((c) => String(c || "").trim() !== "");
+        if (nonEmpties.length < 2) continue;
+
+        const rowText = row.map((c) => String(c || "").toLowerCase().trim()).join(" ");
+
+        // Ignore title/metadata banners
+        if (
+          rowText.includes("empresa:") ||
+          rowText.includes("resumo de venda") ||
+          rowText.includes("periodo de:") ||
+          rowText.includes("quebra por filial")
+        ) {
+          continue;
         }
-        break;
-      }
-    }
 
-    if (headerRowIdx === -1) continue;
+        if (
+          rowText.includes("filial") ||
+          rowText.includes("loja") ||
+          rowText.includes("unidade") ||
+          rowText.includes("sigla") ||
+          (rowText.includes("mes") && (rowText.includes("venda") || rowText.includes("faturamento") || rowText.includes("total") || rowText.includes("offline")))
+        ) {
+          headerRowIdx = r;
+          headerCols = row.map((c) => String(c || "").trim());
 
-    // Map column indices
-    let filialCol = -1;
-    let nomeLojaCol = -1;
-    let mesCol = -1;
-    let fatRealCol = -1;
-    let fatOrcadoCol = -1;
-    let fatBaseCol = -1;
-    let tcCol = -1;
-
-    headerCols.forEach((h, idx) => {
-      const nh = normalize(h);
-
-      if (nh === "filial" || nh.includes("filial") || nh === "sigla" || nh === "codigo" || nh === "cod") {
-        if (filialCol === -1 || nh === "filial") filialCol = idx;
-      }
-
-      if (nh === "nome" || nh === "loja" || nh.includes("nome") || nh.includes("loja") || nh.includes("unidade")) {
-        if (nomeLojaCol === -1 || nh === "nome" || nh === "loja") nomeLojaCol = idx;
-      }
-
-      if ((nh === "mes" || nh === "periodo" || nh === "competencia" || nh === "data" || nh.startsWith("mes ")) && !nh.includes("total") && !nh.includes("faturamento")) {
-        mesCol = idx;
-      }
-
-      // Faturamento Realizado (prioritizes "faturamento real", "realizado", "total do mes", "venda offline")
-      if (nh.includes("faturamento real") || nh.includes("realizado") || nh.includes("total do mes") || nh.includes("venda offline")) {
-        fatRealCol = idx;
-      } else if (nh.includes("faturamento") && !nh.includes("meta") && !nh.includes("anterior") && !nh.includes("2025") && !nh.includes("orcado") && fatRealCol === -1) {
-        fatRealCol = idx;
+          // Merge sub-headers if next row contains UF, FILIAL, NOME
+          if (r + 1 < rawRows.length) {
+            const nextRow = rawRows[r + 1];
+            if (
+              Array.isArray(nextRow) &&
+              nextRow.some(
+                (c) =>
+                  String(c || "").toLowerCase().includes("filial") ||
+                  String(c || "").toLowerCase().includes("nome") ||
+                  String(c || "").toLowerCase().includes("uf")
+              )
+            ) {
+              headerCols = headerCols.map((c, idx) => {
+                const sub = String(nextRow[idx] || "").trim();
+                return sub ? (c ? `${c} - ${sub}` : sub) : c;
+              });
+              headerRowIdx = r + 1;
+            }
+          }
+          break;
+        }
       }
 
-      // Meta / Orçado
-      if (
-        (nh.startsWith("meta") || nh.includes("orcado") || nh.includes("orçado") || nh.includes("meta jul") || nh.includes("meta ago") || nh.includes("meta set")) &&
-        !nh.includes("%") && !nh.includes("acrescimo") && !nh.includes("atingimento") && !nh.includes("diferenca") && !nh.includes("p/ meta") && !nh.includes("para meta")
-      ) {
-        fatOrcadoCol = idx;
-      }
+      if (headerRowIdx === -1) continue;
 
-      // Base anterior
-      if ((nh.includes("2025") || nh.includes("anterior") || nh.includes("base")) && !nh.includes("%") && !nh.includes("meta")) {
-        fatBaseCol = idx;
-      }
+      // Map column indices
+      let filialCol = -1;
+      let nomeLojaCol = -1;
+      let mesCol = -1;
+      let fatRealCol = -1;
+      let fatOrcadoCol = -1;
+      let fatBaseCol = -1;
+      let tcCol = -1;
 
-      // TC / Pedidos / Vendas
-      if (nh.includes("qtd de vendas") || nh.includes("qtd. de vendas") || nh.includes("tc") || nh.includes("pedidos") || nh.includes("clientes")) {
-        tcCol = idx;
-      }
-    });
+      headerCols.forEach((h, idx) => {
+        const nh = normalize(h);
 
-    // Process data rows
-    for (let r = headerRowIdx + 1; r < rawRows.length; r++) {
-      const row = rawRows[r];
-      if (!Array.isArray(row) || row.length === 0) continue;
+        if (nh === "filial" || nh.includes("filial") || nh === "sigla" || nh === "codigo" || nh === "cod") {
+          if (filialCol === -1 || nh === "filial") filialCol = idx;
+        }
 
-      const firstCell = String(row[0] || "").trim();
-      const rowText = row.map((c) => String(c || "")).join(" ");
+        if (nh === "nome" || nh === "loja" || nh.includes("nome") || nh.includes("loja") || nh.includes("unidade")) {
+          if (nomeLojaCol === -1 || nh === "nome" || nh === "loja") nomeLojaCol = idx;
+        }
 
-      // Skip footnotes and totals
-      if (
-        normalize(rowText).includes("total de filiais") ||
-        normalize(rowText).includes("resumo de venda") ||
-        normalize(firstCell).includes("total") ||
-        normalize(firstCell).includes("obs") ||
-        normalize(firstCell).startsWith("*")
-      ) {
-        continue;
-      }
+        if ((nh === "mes" || nh === "periodo" || nh === "competencia" || nh === "data" || nh.startsWith("mes ")) && !nh.includes("total") && !nh.includes("faturamento")) {
+          mesCol = idx;
+        }
 
-      const filialRaw = filialCol >= 0 ? row[filialCol] : null;
-      const nomeRaw = nomeLojaCol >= 0 ? row[nomeLojaCol] : null;
+        // Faturamento Realizado (prioritizes "faturamento real", "realizado", "total do mes", "venda offline")
+        if (nh.includes("faturamento real") || nh.includes("realizado") || nh.includes("total do mes") || nh.includes("venda offline")) {
+          fatRealCol = idx;
+        } else if (nh.includes("faturamento") && !nh.includes("meta") && !nh.includes("anterior") && !nh.includes("2025") && !nh.includes("orcado") && fatRealCol === -1) {
+          fatRealCol = idx;
+        }
 
-      const storeMatch = matchCanonicalStore(filialRaw, stores) || matchCanonicalStore(nomeRaw, stores);
-      if (!storeMatch) continue;
+        // Meta / Orçado
+        if (
+          (nh.startsWith("meta") || nh.includes("orcado") || nh.includes("orçado") || nh.includes("meta jul") || nh.includes("meta ago") || nh.includes("meta set")) &&
+          !nh.includes("%") && !nh.includes("acrescimo") && !nh.includes("atingimento") && !nh.includes("diferenca") && !nh.includes("p/ meta") && !nh.includes("para meta")
+        ) {
+          fatOrcadoCol = idx;
+        }
 
-      const rawKey = normalize(String(filialRaw || nomeRaw || ""));
-      const storeIdOverride = overrides[rawKey];
+        // Base anterior
+        if ((nh.includes("2025") || nh.includes("anterior") || nh.includes("base")) && !nh.includes("%") && !nh.includes("meta")) {
+          fatBaseCol = idx;
+        }
 
-      const storeId = storeIdOverride || (storeMatch.dbStore ? storeMatch.dbStore.id : null);
-      const storeName = storeMatch.canonical.name;
-
-      // Identify month and year
-      const mesRaw = mesCol >= 0 ? row[mesCol] : null;
-      let { month, year } = parseSmartMonthAndYear(mesRaw, defaultYear);
-      if (!month && sheetMonthObj.month) {
-        month = sheetMonthObj.month;
-        year = sheetMonthObj.year;
-      }
-      if (!month) continue;
-
-      const realFat = fatRealCol >= 0 ? parseSmartNumber(row[fatRealCol]) : null;
-      const orcadoFat = fatOrcadoCol >= 0 ? parseSmartNumber(row[fatOrcadoCol]) : null;
-      const baseFat = fatBaseCol >= 0 ? parseSmartNumber(row[fatBaseCol]) : null;
-      const tc = tcCol >= 0 ? parseSmartNumber(row[tcCol]) : null;
-
-      const errors: string[] = [];
-      if (!storeId) {
-        errors.push("Loja não cadastrada no banco de dados");
-        unmappedStores.add(storeName);
-      } else {
-        detectedStores.add(storeName);
-      }
-
-      if (realFat === null && orcadoFat === null && baseFat === null) {
-        errors.push("Faturamento ausente");
-      }
-
-      const isValid = errors.length === 0;
-
-      allRows.push({
-        id: `imp-${storeMatch.canonical.key}-${year}-${month}-${r}`,
-        sourceSheet: sheetName,
-        rowNumber: r + 1,
-        rawStore: String(filialRaw || nomeRaw || storeName),
-        storeName,
-        storeId,
-        canonicalKey: storeMatch.canonical.key,
-        code: storeMatch.canonical.code,
-        month,
-        year,
-        faturamentoRealizado: realFat,
-        faturamentoOrcado: orcadoFat,
-        faturamentoBaseAnoAnterior: baseFat,
-        tc: tc ? Math.round(tc) : null,
-        isValid,
-        statusText: isValid ? "✓ OK" : "⚠️ Loja não identificada",
-        errors,
+        // TC / Pedidos / Vendas
+        if (nh.includes("qtd de vendas") || nh.includes("qtd. de vendas") || nh.includes("tc") || nh.includes("pedidos") || nh.includes("clientes")) {
+          tcCol = idx;
+        }
       });
+
+      // Process data rows
+      for (let r = headerRowIdx + 1; r < rawRows.length; r++) {
+        const row = rawRows[r];
+        if (!Array.isArray(row) || row.length === 0) continue;
+
+        const firstCell = String(row[0] || "").trim();
+        const rowText = row.map((c) => String(c || "")).join(" ");
+
+        // Skip footnotes and totals
+        if (
+          normalize(rowText).includes("total de filiais") ||
+          normalize(rowText).includes("resumo de venda") ||
+          normalize(firstCell).includes("total") ||
+          normalize(firstCell).includes("obs") ||
+          normalize(firstCell).startsWith("*")
+        ) {
+          continue;
+        }
+
+        const filialRaw = filialCol >= 0 ? row[filialCol] : null;
+        const nomeRaw = nomeLojaCol >= 0 ? row[nomeLojaCol] : null;
+
+        const storeMatch = matchCanonicalStore(filialRaw, stores) || matchCanonicalStore(nomeRaw, stores);
+        if (!storeMatch) continue;
+
+        const rawKey = normalize(String(filialRaw || nomeRaw || ""));
+        const storeIdOverride = overrides[rawKey];
+
+        const storeId = storeIdOverride || (storeMatch.dbStore ? storeMatch.dbStore.id : null);
+        const storeName = storeMatch.canonical.name;
+
+        // Identify month and year
+        const mesRaw = mesCol >= 0 ? row[mesCol] : null;
+        let { month, year } = parseSmartMonthAndYear(mesRaw, defaultYear);
+        if (!month && sheetMonthObj.month) {
+          month = sheetMonthObj.month;
+          year = sheetMonthObj.year;
+        }
+        if (!month) continue;
+
+        const realFat = fatRealCol >= 0 ? parseSmartNumber(row[fatRealCol]) : null;
+        const orcadoFat = fatOrcadoCol >= 0 ? parseSmartNumber(row[fatOrcadoCol]) : null;
+        const baseFat = fatBaseCol >= 0 ? parseSmartNumber(row[fatBaseCol]) : null;
+        const tc = tcCol >= 0 ? parseSmartNumber(row[tcCol]) : null;
+
+        const errors: string[] = [];
+        if (!storeId) {
+          errors.push("Loja não cadastrada no banco de dados");
+          unmappedStores.add(storeName);
+        } else {
+          detectedStores.add(storeName);
+        }
+
+        if (realFat === null && orcadoFat === null && baseFat === null) {
+          errors.push("Faturamento ausente");
+        }
+
+        const isValid = errors.length === 0;
+
+        allRows.push({
+          id: `imp-${storeMatch.canonical.key}-${year}-${month}-${r}`,
+          sourceSheet: sheetName,
+          rowNumber: r + 1,
+          rawStore: String(filialRaw || nomeRaw || storeName),
+          storeName,
+          storeId,
+          canonicalKey: storeMatch.canonical.key,
+          code: storeMatch.canonical.code,
+          month,
+          year,
+          faturamentoRealizado: realFat,
+          faturamentoOrcado: orcadoFat,
+          faturamentoBaseAnoAnterior: baseFat,
+          tc: tc ? Math.round(tc) : null,
+          isValid,
+          statusText: isValid ? "✓ OK" : "⚠️ Loja não identificada",
+          errors,
+        });
+      }
     }
+  } catch (err) {
+    console.error("Erro no parseWorkbookAuto:", err);
   }
 
   let totalFaturamentoRealizado = 0;
