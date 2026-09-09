@@ -16,6 +16,7 @@ import {
   FileText,
   Loader2,
   RefreshCw,
+  Share2,
   Upload,
   XCircle,
 } from "lucide-react";
@@ -220,7 +221,7 @@ function AtingimentoIndicator({ pct, compact = false }: { pct: number | null; co
 
 function AtingimentoStatusBadge({ pct }: { pct: number | null }) {
   if (pct === null || !Number.isFinite(pct)) {
-    return <Badge variant="outline" className="text-muted-foreground text-[10px] font-bold">Aguardando</Badge>;
+    return <Badge variant="outline" className="text-muted-foreground text-[10px] font-bold">Não lançado</Badge>;
   }
   const status = getAtingimentoStatus(pct);
   return (
@@ -229,6 +230,150 @@ function AtingimentoStatusBadge({ pct }: { pct: number | null }) {
       <span>{status.label}</span>
     </Badge>
   );
+}
+
+/* ------------------------------------------------------------------ Compartilhamento WhatsApp */
+
+function copyWhatsAppMessage(params: {
+  storeName: string;
+  meta: number;
+  realizado: number | null;
+  tc: number | null;
+  pct: number | null;
+  monthLabel?: string;
+}) {
+  const status = getAtingimentoStatus(params.pct);
+  const metaStr = brl(params.meta);
+  const realStr = params.realizado !== null ? brl(params.realizado) : "Não lançado";
+  const tcStr = params.tc !== null ? intFmt(params.tc) : "—";
+  const pctStr = params.pct !== null ? `${params.pct.toFixed(1)}%` : "—";
+
+  const message = [
+    `🍕 *${params.storeName.toUpperCase()}*${params.monthLabel ? ` (${params.monthLabel})` : ""}`,
+    ``,
+    `🎯 *META:* ${metaStr}`,
+    `💰 *REALIZADO:* ${realStr}`,
+    `📦 *ATENDIMENTOS:* ${tcStr}`,
+    `📊 *ATINGIMENTO:* ${pctStr}`,
+    `${status.icon} *${status.label}*`,
+  ].join("\n");
+
+  if (typeof navigator !== "undefined" && navigator.clipboard) {
+    navigator.clipboard.writeText(message).then(() => {
+      toast.success(`Metas de ${params.storeName} copiadas!`, {
+        description: "Mensagem formatada para WhatsApp copiada para a área de transferência.",
+      });
+    }).catch(() => {
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`, "_blank");
+    });
+  } else {
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`, "_blank");
+  }
+}
+
+/* ------------------------------------------------------------------ Hook Unificado de Faturamento Realizado */
+
+export function useActuals(year: number) {
+  return useQuery({
+    queryKey: ["actuals-targets", year],
+    queryFn: async () => {
+      const map = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
+
+      // 1. Busca da estrutura oficial de apuração (bonus_periods + store_targets)
+      try {
+        const { data: periods, error: pErr } = await supabase
+          .from("bonus_periods")
+          .select("id,store_id,month,year,store_targets(revenue_actual,tc_actual)")
+          .eq("year", year);
+
+        if (!pErr && periods) {
+          for (const p of periods) {
+            const targets = p.store_targets;
+            let rev: number | null = null;
+            let tc: number | null = null;
+
+            if (Array.isArray(targets) && targets.length > 0) {
+              rev = targets[0]?.revenue_actual != null ? Number(targets[0].revenue_actual) : null;
+              tc = targets[0]?.tc_actual != null ? Number(targets[0].tc_actual) : null;
+            } else if (targets && typeof targets === "object") {
+              rev = (targets as any).revenue_actual != null ? Number((targets as any).revenue_actual) : null;
+              tc = (targets as any).tc_actual != null ? Number((targets as any).tc_actual) : null;
+            }
+
+            if (rev != null || tc != null) {
+              map.set(`${p.store_id}-${p.month}`, { revenue_actual: rev, tc_actual: tc });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("bonus_periods query:", err);
+      }
+
+      // 2. Complemento de store_targets via period_id
+      try {
+        const { data: targets, error: tErr } = await supabase
+          .from("store_targets")
+          .select("id, revenue_actual, tc_actual, period_id, bonus_periods!inner(id, store_id, month, year)")
+          .eq("bonus_periods.year", year);
+
+        if (!tErr && targets) {
+          for (const t of targets as any[]) {
+            const bp = t.bonus_periods;
+            if (bp?.store_id && bp?.month) {
+              const rev = t.revenue_actual != null ? Number(t.revenue_actual) : null;
+              const tc = t.tc_actual != null ? Number(t.tc_actual) : null;
+              if (rev != null || tc != null) {
+                map.set(`${bp.store_id}-${bp.month}`, { revenue_actual: rev, tc_actual: tc });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("store_targets query:", err);
+      }
+
+      // 3. Complemento de revenue_history para o ano
+      try {
+        const { data: revHist } = await supabase
+          .from("revenue_history")
+          .select("store_id, month, receita_vendas, tc, faturamento_base_meta")
+          .eq("year", year);
+
+        if (revHist) {
+          for (const rh of revHist) {
+            const rev =
+              rh.receita_vendas != null
+                ? Number(rh.receita_vendas)
+                : rh.faturamento_base_meta != null
+                  ? Number(rh.faturamento_base_meta)
+                  : null;
+            const tc = rh.tc != null ? Number(rh.tc) : null;
+            if (rev != null || tc != null) {
+              const existing = map.get(`${rh.store_id}-${rh.month}`);
+              if (!existing || existing.revenue_actual == null) {
+                map.set(`${rh.store_id}-${rh.month}`, {
+                  revenue_actual: rev ?? existing?.revenue_actual ?? null,
+                  tc_actual: tc ?? existing?.tc_actual ?? null,
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("revenue_history query:", err);
+      }
+
+      return Array.from(map.entries()).map(([key, val]) => {
+        const [store_id, month] = key.split("-");
+        return {
+          store_id,
+          month: Number(month),
+          revenue_actual: val.revenue_actual,
+          tc_actual: val.tc_actual,
+        };
+      });
+    },
+  });
 }
 
 function MetasPage() {
@@ -338,99 +483,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
     },
   });
 
-  // Query resiliente que busca o faturamento realizado oficial vinculado à Loja + Mês + Ano
-  const actualsQuery = useQuery({
-    queryKey: ["actuals-targets", year],
-    queryFn: async () => {
-      const map = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
-
-      // 1. Busca da estrutura oficial de apuração (bonus_periods + store_targets)
-      try {
-        const { data: periods, error: pErr } = await supabase
-          .from("bonus_periods")
-          .select("id,store_id,month,year,store_targets(revenue_actual,tc_actual)")
-          .eq("year", year);
-
-        if (!pErr && periods) {
-          for (const p of periods) {
-            const targets = p.store_targets;
-            let rev: number | null = null;
-            let tc: number | null = null;
-
-            if (Array.isArray(targets) && targets.length > 0) {
-              rev = targets[0]?.revenue_actual != null ? Number(targets[0].revenue_actual) : null;
-              tc = targets[0]?.tc_actual != null ? Number(targets[0].tc_actual) : null;
-            } else if (targets && typeof targets === "object") {
-              rev = (targets as any).revenue_actual != null ? Number((targets as any).revenue_actual) : null;
-              tc = (targets as any).tc_actual != null ? Number((targets as any).tc_actual) : null;
-            }
-
-            if (rev != null || tc != null) {
-              map.set(`${p.store_id}-${p.month}`, { revenue_actual: rev, tc_actual: tc });
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("bonus_periods query:", err);
-      }
-
-      // 2. Complemento direto de store_targets
-      try {
-        const { data: directTargets } = await supabase
-          .from("store_targets")
-          .select("store_id, revenue_actual, tc_actual, bonus_periods!inner(month, year)")
-          .eq("bonus_periods.year", year);
-
-        if (directTargets) {
-          for (const dt of directTargets as any[]) {
-            const m = dt.bonus_periods?.month;
-            const sId = dt.store_id;
-            if (sId && m && (dt.revenue_actual != null || dt.tc_actual != null)) {
-              if (!map.has(`${sId}-${m}`)) {
-                map.set(`${sId}-${m}`, {
-                  revenue_actual: dt.revenue_actual != null ? Number(dt.revenue_actual) : null,
-                  tc_actual: dt.tc_actual != null ? Number(dt.tc_actual) : null,
-                });
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("directTargets fallback:", err);
-      }
-
-      // 3. Complemento de revenue_history para o ano
-      try {
-        const { data: revHist } = await supabase
-          .from("revenue_history")
-          .select("store_id, month, receita_vendas, tc")
-          .eq("year", year);
-
-        if (revHist) {
-          for (const rh of revHist) {
-            if (rh.receita_vendas != null && !map.has(`${rh.store_id}-${rh.month}`)) {
-              map.set(`${rh.store_id}-${rh.month}`, {
-                revenue_actual: Number(rh.receita_vendas),
-                tc_actual: rh.tc != null ? Number(rh.tc) : null,
-              });
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("revenue_history fallback:", err);
-      }
-
-      return Array.from(map.entries()).map(([key, val]) => {
-        const [store_id, month] = key.split("-");
-        return {
-          store_id,
-          month: Number(month),
-          revenue_actual: val.revenue_actual,
-          tc_actual: val.tc_actual,
-        };
-      });
-    },
-  });
+  const actualsQuery = useActuals(year);
 
   const actualMap = useMemo(() => {
     const m = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
@@ -747,7 +800,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                   <TableHead className="text-right w-[130px]">Diferença (Gap)</TableHead>
                   <TableHead className="text-right w-[170px]">% Atingimento</TableHead>
                   <TableHead className="text-center w-[130px]">Status Meta</TableHead>
-                  <TableHead className="text-center w-[90px]">Ações</TableHead>
+                  <TableHead className="text-center w-[170px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -755,6 +808,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                   const isExpanded = expandedStoreId === s.id;
                   let storeOrcado = 0;
                   let storeRealizado = 0;
+                  let storeTc = 0;
                   let storeHasRealizado = false;
 
                   for (const pm of PDF_MONTHS) {
@@ -767,13 +821,14 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                       ? actual?.revenue_actual
                       : actual?.tc_actual;
                     if (rev != null) { storeRealizado += Number(rev); storeHasRealizado = true; }
+                    if (actual?.tc_actual != null) { storeTc += Number(actual.tc_actual); }
                   }
 
                   const storeGap = storeHasRealizado && storeOrcado > 0 ? storeRealizado - storeOrcado : null;
                   const storePct = storeHasRealizado && storeOrcado > 0 ? (storeRealizado / storeOrcado) * 100 : null;
 
                   return (
-                    <ReactFragment key={s.id}>
+                    <React.Fragment key={s.id}>
                       <TableRow
                         className={cn(
                           "cursor-pointer hover:bg-muted/30 transition-colors",
@@ -837,16 +892,38 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                           <AtingimentoStatusBadge pct={storePct} />
                         </TableCell>
 
-                        {/* DETALHAR */}
+                        {/* AÇÕES (WHATSAPP + EXPANDIR) */}
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs font-semibold"
-                            onClick={() => setExpandedStoreId(isExpanded ? null : s.id)}
-                          >
-                            {isExpanded ? "Ocultar" : "Ver meses"}
-                          </Button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs font-bold border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                              title="Copiar metas para WhatsApp"
+                              onClick={() =>
+                                copyWhatsAppMessage({
+                                  storeName: s.name,
+                                  meta: storeOrcado,
+                                  realizado: storeHasRealizado ? storeRealizado : null,
+                                  tc: storeTc > 0 ? storeTc : null,
+                                  pct: storePct,
+                                  monthLabel: `Acumulado Jun–Dez/${year}`,
+                                })
+                              }
+                            >
+                              <Share2 className="size-3 mr-1 text-emerald-600" />
+                              WhatsApp
+                            </Button>
+
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs font-semibold"
+                              onClick={() => setExpandedStoreId(isExpanded ? null : s.id)}
+                            >
+                              {isExpanded ? "Ocultar" : "Ver meses"}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
 
@@ -866,7 +943,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                           </TableCell>
                         </TableRow>
                       )}
-                    </ReactFragment>
+                    </React.Fragment>
                   );
                 })}
 
@@ -993,9 +1070,26 @@ function StoreDetailCard({
             </CardDescription>
           </div>
 
-          {/* Badge Resumo Geral da Loja */}
-          {hasRealizado && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs font-bold border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400"
+              onClick={() =>
+                copyWhatsAppMessage({
+                  storeName,
+                  meta: totalOrcado,
+                  realizado: hasRealizado ? totalRealizado : null,
+                  tc: null,
+                  pct: totalPct,
+                  monthLabel: `Acumulado Jun–Dez/${year}`,
+                })
+              }
+            >
+              <Share2 className="size-3 mr-1 text-emerald-600" />
+              Copiar WhatsApp
+            </Button>
+            {hasRealizado && (
               <Badge
                 className={cn(
                   "font-bold text-xs px-3 py-1 shadow-sm",
@@ -1004,8 +1098,8 @@ function StoreDetailCard({
               >
                 {totalStatus.icon} {totalStatus.label} ({totalPct?.toFixed(1)}%)
               </Badge>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-0 pb-0">
@@ -1024,7 +1118,7 @@ function StoreDetailCard({
                 <TableHead className="text-right w-[130px]">Diferença (Gap)</TableHead>
                 <TableHead className="text-right w-[160px]">% Atingimento</TableHead>
                 <TableHead className="text-center w-[130px]">Status do Mês</TableHead>
-                {isMaster && <TableHead className="text-center w-[80px]">Editar</TableHead>}
+                <TableHead className="text-center w-[100px]">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1088,14 +1182,33 @@ function StoreDetailCard({
                     <AtingimentoStatusBadge pct={pct} />
                   </TableCell>
 
-                  {/* BOTÃO EDITAR (MASTER) */}
-                  {isMaster && (
-                    <TableCell className="text-center">
-                      {goal && (
+                  {/* AÇÕES (WHATSAPP + EDITAR) */}
+                  <TableCell className="text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-6 text-emerald-600 hover:text-emerald-700"
+                        title="Copiar mês para WhatsApp"
+                        onClick={() =>
+                          copyWhatsAppMessage({
+                            storeName,
+                            meta: orcado,
+                            realizado,
+                            tc: null,
+                            pct,
+                            monthLabel: `${pm.full}/${year}`,
+                          })
+                        }
+                      >
+                        <Share2 className="size-3.5" />
+                      </Button>
+                      {isMaster && goal && (
                         <Button
+                          size="icon"
                           variant="ghost"
-                          size="sm"
-                          className="h-6 text-[11px] px-2 text-primary hover:text-primary"
+                          className="size-6 text-primary hover:text-primary"
+                          title="Editar meta"
                           onClick={() =>
                             onEditGoal({
                               goalId: goal.id,
@@ -1110,11 +1223,11 @@ function StoreDetailCard({
                             })
                           }
                         >
-                          <Edit3 className="size-3 mr-1" /> Editar
+                          <Edit3 className="size-3.5" />
                         </Button>
                       )}
-                    </TableCell>
-                  )}
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
 
@@ -1309,13 +1422,14 @@ function EditGoalModal({
   );
 }
 
-/* ------------------------------------------------ Tabela Analítica Master */
+/* ------------------------------------------------ VISÃO ANALÍTICA DAS METAS (ENXUTA E EXECUTIVA) */
 
 function GoalsDashboard({ isMaster }: { isMaster?: boolean }) {
   const nowYear = new Date().getFullYear();
   const [year, setYear] = useState(nowYear);
   const [storeId, setStoreId] = useState("all");
   const [month, setMonth] = useState("all");
+  const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
   const { data: stores } = useStores();
 
   const goals = useQuery({
@@ -1333,6 +1447,19 @@ function GoalsDashboard({ isMaster }: { isMaster?: boolean }) {
     },
   });
 
+  const actualsQuery = useActuals(year);
+
+  const actualMap = useMemo(() => {
+    const m = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
+    for (const item of actualsQuery.data ?? []) {
+      m.set(`${item.store_id}-${item.month}`, {
+        revenue_actual: item.revenue_actual,
+        tc_actual: item.tc_actual,
+      });
+    }
+    return m;
+  }, [actualsQuery.data]);
+
   const history = useQuery({
     queryKey: ["revenue-history", year - 1],
     queryFn: async () => {
@@ -1346,36 +1473,112 @@ function GoalsDashboard({ isMaster }: { isMaster?: boolean }) {
   });
 
   const historyMap = useMemo(() => {
-    const m = new Map<string, { receita_vendas: number; taxa_servico: number }>();
-    for (const h of history.data ?? []) m.set(`${h.store_id}-${h.month}`, h);
+    const m = new Map<string, { receita_vendas: number; taxa_servico: number; tc: number }>();
+    for (const h of history.data ?? []) {
+      m.set(`${h.store_id}-${h.month}`, {
+        receita_vendas: Number(h.receita_vendas || 0),
+        taxa_servico: Number(h.taxa_servico || 0),
+        tc: Number(h.tc || 0),
+      });
+    }
     return m;
   }, [history.data]);
 
-  const rows = (goals.data ?? []).filter(
-    (g) => (storeId === "all" || g.store_id === storeId) && (month === "all" || String(g.month) === month),
-  );
+  // Lista de lojas para visualização analítica
+  const filteredStores = useMemo(() => {
+    const list = (stores ?? []).filter((s) => s.active);
+    if (storeId !== "all") return list.filter((s) => s.id === storeId);
+    return list;
+  }, [stores, storeId]);
 
-  const totals = rows.reduce(
-    (s, r) => ({
-      base: s.base + Number(r.faturamento_base_ano_anterior),
-      meta: s.meta + Number(r.meta_faturamento),
-      tcBase: s.tcBase + Number(r.tc_ano_anterior),
-      tcMeta: s.tcMeta + Number(r.meta_tc),
-    }),
-    { base: 0, meta: 0, tcBase: 0, tcMeta: 0 },
-  );
+  // Agrupamento consolidado por loja
+  const storeSummaries = useMemo(() => {
+    return filteredStores.map((s) => {
+      const activeMonths = month === "all" ? PDF_MONTHS : PDF_MONTHS.filter((m) => String(m.month) === month);
 
-  const growthFat = rows[0]?.growth_fat_pct ?? null;
-  const growthTc = rows[0]?.growth_tc_pct ?? null;
+      let storeMeta = 0;
+      let storeRealizado = 0;
+      let storeTcRealizado = 0;
+      let storeTcAnterior = 0;
+      let storeFatAnterior = 0;
+      let storeTaxaAnterior = 0;
+      let hasRealizado = false;
+
+      const monthRows = activeMonths.map((pm) => {
+        const g = (goals.data ?? []).find((x) => x.store_id === s.id && x.month === pm.month);
+        const actual = actualMap.get(`${s.id}-${pm.month}`);
+        const h = historyMap.get(`${s.id}-${pm.month}`);
+
+        const meta = g ? Number(g.meta_faturamento) : 0;
+        const real = actual?.revenue_actual != null ? Number(actual.revenue_actual) : null;
+        const tcReal = actual?.tc_actual != null ? Number(actual.tc_actual) : null;
+        const tcAnt = h?.tc != null ? Number(h.tc) : g ? Number(g.tc_ano_anterior) : null;
+        const fatAnt = h?.receita_vendas != null ? Number(h.receita_vendas) : g ? Number(g.faturamento_base_ano_anterior) : null;
+        const taxaAnt = h?.taxa_servico != null ? Number(h.taxa_servico) : 0;
+
+        storeMeta += meta;
+        if (real !== null) {
+          storeRealizado += real;
+          hasRealizado = true;
+        }
+        if (tcReal !== null) storeTcRealizado += tcReal;
+        if (tcAnt !== null) storeTcAnterior += tcAnt;
+        if (fatAnt !== null) storeFatAnterior += fatAnt;
+        storeTaxaAnterior += taxaAnt;
+
+        const mGap = real !== null && meta > 0 ? real - meta : null;
+        const mPct = real !== null && meta > 0 ? (real / meta) * 100 : null;
+
+        return {
+          month: pm.month,
+          monthLabel: pm.full,
+          meta,
+          realizado: real,
+          tcRealizado: tcReal,
+          tcAnterior: tcAnt,
+          fatAnterior: fatAnt,
+          taxaAnterior: taxaAnt,
+          gap: mGap,
+          pct: mPct,
+        };
+      });
+
+      const storeGap = hasRealizado && storeMeta > 0 ? storeRealizado - storeMeta : null;
+      const storePct = hasRealizado && storeMeta > 0 ? (storeRealizado / storeMeta) * 100 : null;
+
+      return {
+        store: s,
+        meta: storeMeta,
+        realizado: hasRealizado ? storeRealizado : null,
+        hasRealizado,
+        gap: storeGap,
+        pct: storePct,
+        tcRealizado: storeTcRealizado > 0 ? storeTcRealizado : null,
+        tcAnterior: storeTcAnterior > 0 ? storeTcAnterior : null,
+        fatAnterior: storeFatAnterior > 0 ? storeFatAnterior : null,
+        taxaAnterior: storeTaxaAnterior > 0 ? storeTaxaAnterior : null,
+        monthRows,
+      };
+    });
+  }, [filteredStores, month, goals.data, actualMap, historyMap]);
+
+  // Totais Gerais
+  const totalMeta = storeSummaries.reduce((acc, s) => acc + s.meta, 0);
+  const totalRealizado = storeSummaries.reduce((acc, s) => acc + (s.realizado ?? 0), 0);
+  const hasAnyRealizado = storeSummaries.some((s) => s.hasRealizado);
+  const totalGap = hasAnyRealizado && totalMeta > 0 ? totalRealizado - totalMeta : null;
+  const totalPct = hasAnyRealizado && totalMeta > 0 ? (totalRealizado / totalMeta) * 100 : null;
+  const totalStatus = getAtingimentoStatus(totalPct);
 
   return (
     <div className="space-y-4">
+      {/* Filtros */}
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 pt-6">
           <div className="space-y-1.5">
-            <Label>Ano da meta</Label>
+            <Label className="text-xs text-muted-foreground">Ano da meta</Label>
             <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-              <SelectTrigger className="w-[120px]">
+              <SelectTrigger className="w-[120px] font-semibold">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1387,8 +1590,9 @@ function GoalsDashboard({ isMaster }: { isMaster?: boolean }) {
               </SelectContent>
             </Select>
           </div>
+
           <div className="space-y-1.5">
-            <Label>Loja</Label>
+            <Label className="text-xs text-muted-foreground">Loja</Label>
             <Select value={storeId} onValueChange={setStoreId}>
               <SelectTrigger className="w-[220px]">
                 <SelectValue />
@@ -1403,17 +1607,18 @@ function GoalsDashboard({ isMaster }: { isMaster?: boolean }) {
               </SelectContent>
             </Select>
           </div>
+
           <div className="space-y-1.5">
-            <Label>Mês</Label>
+            <Label className="text-xs text-muted-foreground">Competência / Mês</Label>
             <Select value={month} onValueChange={setMonth}>
               <SelectTrigger className="w-[160px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os meses</SelectItem>
-                {MONTHS.map((m, i) => (
-                  <SelectItem key={m} value={String(i + 1)}>
-                    {m}
+                <SelectItem value="all">Todos os meses (Jun–Dez)</SelectItem>
+                {PDF_MONTHS.map((pm) => (
+                  <SelectItem key={pm.month} value={String(pm.month)}>
+                    {pm.full}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1422,80 +1627,313 @@ function GoalsDashboard({ isMaster }: { isMaster?: boolean }) {
         </CardContent>
       </Card>
 
-      {rows.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Como a meta é formada</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-center gap-3 text-sm">
-            <FlowStep label={`Receita de vendas ${year - 1}`} value={brl(totals.base - taxaTotal(rows, historyMap))} />
-            <span className="text-muted-foreground">+</span>
-            <FlowStep label="Taxa de serviço" value={brl(taxaTotal(rows, historyMap))} />
-            <ArrowRight className="size-4 text-muted-foreground" />
-            <FlowStep label="Faturamento base" value={brl(totals.base)} />
-            <ArrowRight className="size-4 text-muted-foreground" />
-            <FlowStep label={`+ ${growthFat ?? 10}%`} value={brl(totals.meta)} highlight />
-            <span className="mx-2 h-8 w-px bg-border" />
-            <FlowStep label={`TC ${year - 1}`} value={intFmt(totals.tcBase)} />
-            <ArrowRight className="size-4 text-muted-foreground" />
-            <FlowStep label={`+ ${growthTc ?? 10}%`} value={intFmt(totals.tcMeta)} highlight />
-          </CardContent>
+      {/* Cards de Resumo Executivo */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card className="p-4 border-l-4 border-l-primary bg-card">
+          <p className="text-xs font-semibold text-muted-foreground uppercase">Meta Orçada Total</p>
+          <p className="text-2xl font-black text-primary mt-1">{brl(totalMeta)}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Ano {year} (+10%)</p>
         </Card>
-      )}
 
+        <Card className="p-4 border-l-4 border-l-emerald-500 bg-card">
+          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase">Faturamento Realizado</p>
+          <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-1">
+            {hasAnyRealizado ? brl(totalRealizado) : "Não lançado"}
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {hasAnyRealizado ? "Sincronizado automaticamente" : "Aguardando importação"}
+          </p>
+        </Card>
+
+        <Card className="p-4 border-l-4 border-l-amber-500 bg-card">
+          <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase">Variação (Realizado - Meta)</p>
+          <p className={cn(
+            "text-2xl font-black mt-1",
+            totalGap === null
+              ? "text-muted-foreground"
+              : totalGap >= 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-red-600 dark:text-red-400",
+          )}>
+            {totalGap !== null ? `${totalGap >= 0 ? "+" : ""}${brl(totalGap)}` : "—"}
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {totalGap !== null ? (totalGap >= 0 ? "Superávit no período" : "Déficit no período") : "—"}
+          </p>
+        </Card>
+
+        <Card className="p-4 border-l-4 border-l-sky-500 bg-card">
+          <p className="text-xs font-semibold text-sky-700 dark:text-sky-400 uppercase">Atingimento Geral</p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <p className="text-2xl font-black text-sky-700 dark:text-sky-300">
+              {totalPct !== null ? `${totalPct.toFixed(1)}%` : "—"}
+            </p>
+            {totalPct !== null && (
+              <Badge variant="outline" className={cn("text-[10px] font-extrabold px-1.5 py-0.2", totalStatus.badgeClass)}>
+                {totalStatus.icon} {totalStatus.label}
+              </Badge>
+            )}
+          </div>
+          {totalPct !== null && (
+            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mt-2">
+              <div
+                className={cn("h-full transition-all duration-300 rounded-full", totalStatus.barColor)}
+                style={{ width: `${Math.min(Math.max(totalPct, 0), 100)}%` }}
+              />
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Tabela Analítica Principal Enxuta */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Metas Analíticas {year} — base {year - 1}
-          </CardTitle>
+        <CardHeader className="py-3 px-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-sm font-bold">Visão Analítica das Metas — {year}</CardTitle>
+              <CardDescription className="text-xs">
+                Visualização executiva simplificada. Clique na linha da loja para expandir detalhes e comparativos com o ano anterior.
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="px-0">
+        <CardContent className="px-0 pb-0">
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted/50 text-xs font-bold uppercase">
                 <TableRow>
-                  <TableHead>Loja</TableHead>
-                  <TableHead>Mês</TableHead>
-                  <TableHead className="text-right">Receita A-1</TableHead>
-                  <TableHead className="text-right">Taxa serviço A-1</TableHead>
-                  <TableHead className="text-right">Base A-1</TableHead>
-                  <TableHead className="text-right">Meta faturamento</TableHead>
-                  <TableHead className="text-right">TC A-1</TableHead>
-                  <TableHead className="text-right">Meta TC</TableHead>
+                  <TableHead className="w-[200px]">Loja</TableHead>
+                  <TableHead className="text-right w-[140px]">Meta Orçada</TableHead>
+                  <TableHead className="text-right w-[140px]">Realizado</TableHead>
+                  <TableHead className="text-right w-[130px]">Variação</TableHead>
+                  <TableHead className="text-right w-[160px]">% Atingimento</TableHead>
+                  <TableHead className="text-center w-[130px]">Status Meta</TableHead>
+                  <TableHead className="text-center w-[160px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((g) => {
-                  const h = historyMap.get(`${g.store_id}-${g.month}`);
+                {storeSummaries.map((s) => {
+                  const isExpanded = expandedStoreId === s.store.id;
                   return (
-                    <TableRow key={g.id}>
-                      <TableCell className="font-medium">
-                        {(g.stores as { name: string } | null)?.name ?? "—"}
-                      </TableCell>
-                      <TableCell>{MONTHS[g.month - 1]}</TableCell>
-                      <TableCell className="text-right">{brl(h?.receita_vendas ?? null)}</TableCell>
-                      <TableCell className="text-right">{brl(h?.taxa_servico ?? null)}</TableCell>
-                      <TableCell className="text-right">{brl(g.faturamento_base_ano_anterior)}</TableCell>
-                      <TableCell className="text-right font-semibold">{brl(g.meta_faturamento)}</TableCell>
-                      <TableCell className="text-right">{intFmt(g.tc_ano_anterior)}</TableCell>
-                      <TableCell className="text-right font-semibold">{intFmt(g.meta_tc)}</TableCell>
-                    </TableRow>
+                    <React.Fragment key={s.store.id}>
+                      <TableRow
+                        className={cn(
+                          "cursor-pointer hover:bg-muted/30 transition-colors",
+                          isExpanded && "bg-muted/20 border-l-4 border-l-primary",
+                        )}
+                        onClick={() => setExpandedStoreId(isExpanded ? null : s.store.id)}
+                      >
+                        {/* LOJA */}
+                        <TableCell className="font-semibold flex items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronDown className="size-4 text-primary shrink-0" />
+                          ) : (
+                            <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+                          )}
+                          <span>{s.store.name}</span>
+                        </TableCell>
+
+                        {/* META ORÇADA */}
+                        <TableCell className="text-right font-bold text-primary">
+                          {s.meta > 0 ? brl(s.meta) : "—"}
+                        </TableCell>
+
+                        {/* REALIZADO */}
+                        <TableCell className="text-right font-semibold">
+                          {s.hasRealizado && s.realizado !== null ? (
+                            <span className={cn(
+                              s.pct !== null && s.pct >= 90 && "text-emerald-700 dark:text-emerald-400 font-bold",
+                              s.pct !== null && s.pct < 90 && "text-red-700 dark:text-red-400 font-bold",
+                            )}>
+                              {brl(s.realizado)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs italic">Não lançado</span>
+                          )}
+                        </TableCell>
+
+                        {/* VARIAÇÃO */}
+                        <TableCell className="text-right font-bold">
+                          {s.gap !== null ? (
+                            <span className={s.gap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}>
+                              {s.gap >= 0 ? "+" : ""}{brl(s.gap)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+
+                        {/* % ATINGIMENTO */}
+                        <TableCell className="text-right">
+                          <AtingimentoIndicator pct={s.pct} />
+                        </TableCell>
+
+                        {/* STATUS */}
+                        <TableCell className="text-center">
+                          <AtingimentoStatusBadge pct={s.pct} />
+                        </TableCell>
+
+                        {/* AÇÕES (WHATSAPP + EXPANSÃO) */}
+                        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs font-bold border-emerald-500/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                              title="Copiar metas para WhatsApp"
+                              onClick={() =>
+                                copyWhatsAppMessage({
+                                  storeName: s.store.name,
+                                  meta: s.meta,
+                                  realizado: s.realizado,
+                                  tc: s.tcRealizado,
+                                  pct: s.pct,
+                                  monthLabel: month === "all" ? `Acumulado Jun–Dez/${year}` : `${MONTHS[Number(month) - 1]}/${year}`,
+                                })
+                              }
+                            >
+                              <Share2 className="size-3 mr-1 text-emerald-600" />
+                              WhatsApp
+                            </Button>
+
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs font-semibold"
+                              onClick={() => setExpandedStoreId(isExpanded ? null : s.store.id)}
+                            >
+                              {isExpanded ? "Ocultar" : "Detalhar"}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+
+                      {/* LINHA EXPANSÍVEL: DETALHAMENTO & COMPARATIVO ANO ANTERIOR */}
+                      {isExpanded && (
+                        <TableRow className="bg-muted/10">
+                          <TableCell colSpan={7} className="p-4">
+                            <div className="space-y-3">
+                              {/* Cards de Comparativo Ano Anterior */}
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <Card className="p-3 bg-card border">
+                                  <p className="text-[11px] font-semibold text-muted-foreground uppercase">
+                                    Faturamento Ano Anterior ({year - 1})
+                                  </p>
+                                  <p className="text-lg font-bold text-foreground mt-0.5">
+                                    {s.fatAnterior ? brl(s.fatAnterior) : "—"}
+                                  </p>
+                                </Card>
+
+                                <Card className="p-3 bg-card border">
+                                  <p className="text-[11px] font-semibold text-muted-foreground uppercase">
+                                    Atendimentos Ano Anterior (TC A-1)
+                                  </p>
+                                  <p className="text-lg font-bold text-foreground mt-0.5">
+                                    {s.tcAnterior ? intFmt(s.tcAnterior) : "—"}
+                                  </p>
+                                </Card>
+
+                                <Card className="p-3 bg-card border">
+                                  <p className="text-[11px] font-semibold text-sky-700 dark:text-sky-400 uppercase">
+                                    Atendimentos Atual (TC Realizado)
+                                  </p>
+                                  <p className="text-lg font-bold text-sky-700 dark:text-sky-300 mt-0.5">
+                                    {s.tcRealizado ? intFmt(s.tcRealizado) : "Não lançado"}
+                                  </p>
+                                </Card>
+
+                                <Card className="p-3 bg-card border">
+                                  <p className="text-[11px] font-semibold text-muted-foreground uppercase">
+                                    Taxa de Serviço / Entrega A-1
+                                  </p>
+                                  <p className="text-lg font-bold text-foreground mt-0.5">
+                                    {s.taxaAnterior ? brl(s.taxaAnterior) : "R$ 0,00"}
+                                  </p>
+                                </Card>
+                              </div>
+
+                              {/* Tabela mês a mês da loja se "Todos os meses" estiver selecionado */}
+                              {month === "all" && (
+                                <div className="rounded-md border bg-card overflow-hidden">
+                                  <Table>
+                                    <TableHeader className="bg-muted/40 text-[11px] font-bold uppercase">
+                                      <TableRow>
+                                        <TableHead>Mês</TableHead>
+                                        <TableHead className="text-right">Meta Orçada</TableHead>
+                                        <TableHead className="text-right">Realizado</TableHead>
+                                        <TableHead className="text-right">Variação</TableHead>
+                                        <TableHead className="text-right">TC Realizado</TableHead>
+                                        <TableHead className="text-right">TC A-1</TableHead>
+                                        <TableHead className="text-right">% Atingimento</TableHead>
+                                        <TableHead className="text-center">Status</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {s.monthRows.map((mr) => (
+                                        <TableRow key={mr.month} className="text-xs">
+                                          <TableCell className="font-semibold">{mr.monthLabel}</TableCell>
+                                          <TableCell className="text-right text-primary font-bold">{brl(mr.meta)}</TableCell>
+                                          <TableCell className="text-right font-semibold">
+                                            {mr.realizado !== null ? brl(mr.realizado) : <span className="text-muted-foreground italic">Não lançado</span>}
+                                          </TableCell>
+                                          <TableCell className="text-right font-bold">
+                                            {mr.gap !== null ? (
+                                              <span className={mr.gap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}>
+                                                {mr.gap >= 0 ? "+" : ""}{brl(mr.gap)}
+                                              </span>
+                                            ) : "—"}
+                                          </TableCell>
+                                          <TableCell className="text-right">{mr.tcRealizado !== null ? intFmt(mr.tcRealizado) : "—"}</TableCell>
+                                          <TableCell className="text-right text-muted-foreground">{mr.tcAnterior !== null ? intFmt(mr.tcAnterior) : "—"}</TableCell>
+                                          <TableCell className="text-right">
+                                            <AtingimentoIndicator pct={mr.pct} compact />
+                                          </TableCell>
+                                          <TableCell className="text-center">
+                                            <AtingimentoStatusBadge pct={mr.pct} />
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
                   );
                 })}
-                {rows.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-muted-foreground">
-                      Nenhuma meta gerada para {year}. Sincronize o PDF na aba Orçamento de Metas.
+
+                {/* Total Consolidado */}
+                {storeSummaries.length > 0 && (
+                  <TableRow className="bg-muted/60 font-extrabold border-t-2 text-sm">
+                    <TableCell className="font-extrabold uppercase tracking-wide text-xs">TOTAL ANALÍTICO</TableCell>
+                    <TableCell className="text-right font-extrabold text-primary">{brl(totalMeta)}</TableCell>
+                    <TableCell className="text-right font-extrabold">
+                      {hasAnyRealizado ? (
+                        <span className={cn(
+                          totalPct !== null && totalPct >= 90 && "text-emerald-700 dark:text-emerald-400",
+                          totalPct !== null && totalPct < 90 && "text-red-700 dark:text-red-400",
+                        )}>
+                          {brl(totalRealizado)}
+                        </span>
+                      ) : "—"}
                     </TableCell>
-                  </TableRow>
-                )}
-                {rows.length > 0 && (
-                  <TableRow className="bg-muted/40 font-semibold">
-                    <TableCell colSpan={4}>Total {storeId === "all" ? "geral" : "da loja"}</TableCell>
-                    <TableCell className="text-right">{brl(totals.base)}</TableCell>
-                    <TableCell className="text-right">{brl(totals.meta)}</TableCell>
-                    <TableCell className="text-right">{intFmt(totals.tcBase)}</TableCell>
-                    <TableCell className="text-right">{intFmt(totals.tcMeta)}</TableCell>
+                    <TableCell className="text-right font-extrabold">
+                      {totalGap !== null ? (
+                        <span className={totalGap >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}>
+                          {totalGap >= 0 ? "+" : ""}{brl(totalGap)}
+                        </span>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <AtingimentoIndicator pct={totalPct} />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <AtingimentoStatusBadge pct={totalPct} />
+                    </TableCell>
+                    <TableCell />
                   </TableRow>
                 )}
               </TableBody>
@@ -1503,22 +1941,6 @@ function GoalsDashboard({ isMaster }: { isMaster?: boolean }) {
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function taxaTotal(
-  rows: Array<{ store_id: string; month: number }>,
-  historyMap: Map<string, { taxa_servico: number }>,
-) {
-  return rows.reduce((s, r) => s + Number(historyMap.get(`${r.store_id}-${r.month}`)?.taxa_servico ?? 0), 0);
-}
-
-function FlowStep({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className={highlight ? "rounded-md border border-primary/40 bg-primary/5 px-3 py-2" : "px-1"}>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-semibold">{value}</p>
     </div>
   );
 }
@@ -1845,6 +2267,34 @@ function ImportWizard() {
               });
             if (insErr) throw new Error(insErr.message);
           }
+
+          // 2. Grava também no revenue_history para garantir 100% de persistência
+          const { data: existRev } = await supabase
+            .from("revenue_history")
+            .select("id")
+            .eq("store_id", r.storeId!)
+            .eq("year", baseYear)
+            .eq("month", r.month)
+            .maybeSingle();
+
+          const revPayload = {
+            store_id: r.storeId!,
+            year: baseYear,
+            month: r.month,
+            receita_vendas: Number(r.faturamentoRealizado ?? 0),
+            taxa_servico: 0,
+            tc: Number(r.tc ?? 0),
+            source_file: fileName || "Importação Faturamento Realizado",
+            imported_at: new Date().toISOString(),
+            imported_by: user?.id ?? null,
+          };
+
+          if (existRev) {
+            await supabase.from("revenue_history").update(revPayload).eq("id", existRev.id);
+          } else {
+            await supabase.from("revenue_history").insert(revPayload);
+          }
+
           updatedCount += 1;
         }
 
