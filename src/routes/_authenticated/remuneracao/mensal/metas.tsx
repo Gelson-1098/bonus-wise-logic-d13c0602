@@ -1430,6 +1430,8 @@ function ImportWizard() {
   const nowYear = new Date().getFullYear();
   const fileRef = useRef<HTMLInputElement>(null);
   const importFn = useServerFn(importRevenueHistory);
+  const generateFn = useServerFn(generateGoals);
+
   const { data: stores } = useStores();
 
   const [importMode, setImportMode] = useState<"realizado" | "meta">("realizado");
@@ -1698,12 +1700,22 @@ function ImportWizard() {
           console.warn("Server importFn notice:", serverFnErr);
         }
 
+        // Recalcula as metas oficiais a partir do histórico recém-importado
+        let goalsGenerated = 0;
+        try {
+          const res = await generateFn({ data: { base_year: baseYear - 1, target_year: baseYear } });
+          goalsGenerated = Number((res as { count?: number } | undefined)?.count ?? 0);
+        } catch (genErr) {
+          console.warn("Recalculo de metas notice:", genErr);
+        }
+
         return {
           type: "meta" as const,
           count: importedCount,
-          goals: importedCount,
+          goals: goalsGenerated,
         };
       }
+
     },
     onSuccess: (res) => {
       if (res.type === "realizado") {
@@ -1712,8 +1724,9 @@ function ImportWizard() {
         });
       } else {
         toast.success("Metas importadas e salvas com sucesso!", {
-          description: `${res.count} registros salvos no banco de dados.`,
+          description: `${res.count} registro(s) de histórico salvos${res.goals ? ` e ${res.goals} meta(s) oficiais recalculadas` : ""}.`,
         });
+
       }
 
       setStep("upload");
