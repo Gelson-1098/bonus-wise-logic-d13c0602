@@ -246,11 +246,10 @@ export const importActualRevenue = createServerFn({ method: "POST" })
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await supabase.from("store_targets").insert({
           period_id: period.id,
-          store_id: r.store_id,
           revenue_actual: r.revenue_actual,
           tc_actual: r.tc_actual,
           target_calculated: 0,
-        } as any);
+        });
       }
       updatedCount += 1;
     }

@@ -1839,11 +1839,10 @@ function ImportWizard() {
               .from("store_targets")
               .insert({
                 period_id: period.id,
-                store_id: r.storeId!,
                 revenue_actual: Number(r.faturamentoRealizado ?? 0),
                 tc_actual: Number(r.tc ?? 0),
                 target_calculated: 0,
-              } as any);
+              });
             if (insErr) throw new Error(insErr.message);
           }
           updatedCount += 1;
