@@ -1586,13 +1586,12 @@ function ImportWizard() {
       const XLSX = await import("xlsx");
       const buffer = await file.arrayBuffer();
       const wb = XLSX.read(buffer, { cellDates: true, raw: true });
-      // Attach XLSX instance so parseWorkbookAuto can use it directly
       (wb as any).XLSX = XLSX;
       setWorkbook(wb);
       setFileName(file.name);
       setStep("review");
       toast.success("Planilha processada com sucesso!", {
-        description: "Confira a tabela abaixo com todas as lojas identificadas antes de salvar.",
+        description: "Confira a tabela de conferência abaixo com todas as lojas identificadas.",
       });
     } catch (e) {
       toast.error("Não foi possível ler a planilha", { description: (e as Error).message });
@@ -1721,10 +1720,10 @@ function ImportWizard() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-bold flex items-center gap-2">
             <Upload className="size-4 text-primary" />
-            <span>Fluxo de Importação Automática de Metas e Faturamento</span>
+            <span>Importação Automática de Faturamento e Metas</span>
           </CardTitle>
           <CardDescription className="text-xs">
-            Selecione o objetivo da importação. O sistema fará a leitura automática de todas as abas e lojas sem necessidade de seleção manual.
+            Selecione o arquivo Excel ou CSV. O sistema identifica automaticamente todas as lojas, períodos, faturamentos e TC.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1746,7 +1745,7 @@ function ImportWizard() {
                 <span>1. IMPORTAR FATURAMENTO REALIZADO (OFICIAL)</span>
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                Importa os faturamentos reais do ano ({nowYear}) para confronto direto com a meta orçada e apuração de atingimento para remuneração.
+                Importa o faturamento real das lojas no ano ({nowYear}) para confronto com a meta e cálculo automático de bônus.
               </p>
             </div>
 
@@ -1767,14 +1766,14 @@ function ImportWizard() {
                 <span>2. IMPORTAR HISTÓRICO / METAS</span>
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                Importa o histórico do ano base para definição das metas obrigatórias de cada loja.
+                Importa o histórico do ano base para definição das metas orçadas de cada loja.
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-end gap-3 pt-2">
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Ano de Competência</Label>
+              <Label className="text-xs font-semibold">Ano de Referência</Label>
               <Select value={String(baseYear)} onValueChange={(v) => setBaseYear(Number(v))}>
                 <SelectTrigger className="w-[140px] text-xs font-bold">
                   <SelectValue />
@@ -1802,7 +1801,7 @@ function ImportWizard() {
             />
 
             <Button onClick={() => fileRef.current?.click()} className="font-bold text-xs">
-              <Upload className="size-4 mr-1.5" /> Selecionar e Carregar Arquivo Excel
+              <Upload className="size-4 mr-1.5" /> Selecionar e Carregar Planilha Excel
             </Button>
 
             {fileName && (
@@ -1830,7 +1829,7 @@ function ImportWizard() {
                 </Badge>
               </CardTitle>
               <CardDescription className="text-xs">
-                Confira os valores processados para todas as lojas antes de efetivar a gravação oficial.
+                Confira a lista detalhada de cada loja identificada com seus respectivos valores antes de efetivar o salvamento.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1868,13 +1867,13 @@ function ImportWizard() {
                 </div>
               </div>
 
-              {/* Alertas de Inconsistências (se houver) */}
+              {/* Alertas de Lojas Não Identificadas (se houver) */}
               {autoResult.unmappedStores.length > 0 && (
                 <Alert variant="destructive" className="mt-4">
                   <AlertTriangle className="size-4" />
                   <AlertTitle>Lojas não identificadas ({autoResult.unmappedStores.length})</AlertTitle>
                   <AlertDescription>
-                    As seguintes lojas não foram encontradas no cadastro oficial e precisam ser vinculadas manualmente abaixo:
+                    As seguintes lojas não foram encontradas no cadastro oficial e precisam ser vinculadas manualmente:
                     <div className="grid gap-2 sm:grid-cols-2 mt-2">
                       {autoResult.unmappedStores.map((unmapped: string) => (
                         <div key={unmapped} className="flex items-center gap-2 bg-background p-2 rounded border text-foreground">
@@ -1909,7 +1908,7 @@ function ImportWizard() {
               <div>
                 <CardTitle className="text-sm font-bold">Detalhamento por Loja e Período</CardTitle>
                 <CardDescription className="text-xs">
-                  Valores que serão gravados no banco de dados oficial.
+                  Valores individuais que serão gravados como fonte oficial de Faturamento Realizado.
                 </CardDescription>
               </div>
 
@@ -1932,7 +1931,7 @@ function ImportWizard() {
                   disabled={validRows.length === 0 || doSave.isPending}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs h-8 shadow-sm"
                 >
-                  {doSave.isPending ? "Gravando..." : "SALVAR METAS IMPORTADAS"}
+                  {doSave.isPending ? "Gravando..." : importMode === "realizado" ? "SALVAR FATURAMENTO REALIZADO" : "SALVAR METAS IMPORTADAS"}
                 </Button>
               </div>
             </CardHeader>
@@ -1941,15 +1940,16 @@ function ImportWizard() {
                 <Table>
                   <TableHeader className="bg-muted/60 sticky top-0 z-10 text-xs font-bold uppercase">
                     <TableRow>
+                      <TableHead className="w-[100px]">Filial</TableHead>
                       <TableHead className="w-[200px]">Loja</TableHead>
-                      <TableHead className="w-[140px]">Período</TableHead>
+                      <TableHead className="w-[130px]">Período</TableHead>
                       <TableHead className="text-right w-[160px]">Faturamento Orçado</TableHead>
                       <TableHead className="text-right w-[180px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">
                         Faturamento Realizado
                       </TableHead>
                       <TableHead className="text-right w-[110px]">TC (Pedidos)</TableHead>
                       <TableHead className="text-right w-[120px]">% Atingimento</TableHead>
-                      <TableHead className="text-center w-[120px]">Status</TableHead>
+                      <TableHead className="text-center w-[100px]">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1957,6 +1957,7 @@ function ImportWizard() {
                       const isOk = r.isValid && r.storeId;
                       return (
                         <TableRow key={r.id} className={cn("text-xs", !isOk && "bg-destructive/5")}>
+                          <TableCell className="font-bold text-muted-foreground">{r.code || "—"}</TableCell>
                           <TableCell className="font-semibold">{r.storeName}</TableCell>
                           <TableCell className="font-medium text-muted-foreground">
                             {MONTHS[r.month - 1] ?? `Mês ${r.month}`}/{r.year}
@@ -1996,7 +1997,7 @@ function ImportWizard() {
                               </Badge>
                             ) : (
                               <Badge variant="destructive" className="font-bold text-[10px]">
-                                ⚠️ Não identificada
+                                ⚠️ Pendente
                               </Badge>
                             )}
                           </TableCell>
@@ -2009,7 +2010,7 @@ function ImportWizard() {
             </CardContent>
           </Card>
 
-          {/* Botão de Gravação no Rodapé */}
+          {/* Botão de Gravação Principal */}
           <div className="flex justify-end p-2">
             <Button
               size="lg"
@@ -2017,7 +2018,11 @@ function ImportWizard() {
               disabled={validRows.length === 0 || doSave.isPending}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm px-8 py-3 shadow-md"
             >
-              {doSave.isPending ? "Gravando Registros..." : "SALVAR METAS IMPORTADAS"}
+              {doSave.isPending
+                ? "Gravando Registros..."
+                : importMode === "realizado"
+                  ? "SALVAR FATURAMENTO REALIZADO"
+                  : "SALVAR METAS IMPORTADAS"}
             </Button>
           </div>
         </div>
