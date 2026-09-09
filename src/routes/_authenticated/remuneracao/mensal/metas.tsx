@@ -1724,8 +1724,9 @@ function ImportWizard() {
         });
       } else {
         toast.success("Metas importadas e salvas com sucesso!", {
-          description: `${res.count} registros salvos no banco de dados.`,
+          description: `${res.count} registro(s) de histórico salvos${res.goals ? ` e ${res.goals} meta(s) oficiais recalculadas` : ""}.`,
         });
+
       }
 
       setStep("upload");
