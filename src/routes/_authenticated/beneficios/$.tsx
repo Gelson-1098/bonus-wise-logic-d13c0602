@@ -1,12 +1,10 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   Building2,
   Calendar,
-  CheckCircle2,
   Clock,
   Edit3,
   FileSpreadsheet,
@@ -20,7 +18,6 @@ import {
   Unlock,
   User,
   Users,
-  Wallet,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAccess } from "@/hooks/use-auth";
@@ -29,7 +26,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -55,19 +51,15 @@ import {
 import { brl, MONTHS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
-  computeBenefitCalculations,
-  deleteBenefitEntry,
-  getBenefitEntries,
-  getBenefitParameters,
-  getBenefitPeriodStatuses,
-  resetBenefitsToSpreadsheetBaseline,
-  saveBenefitEntry,
-  saveBenefitParameters,
-  toggleBenefitPeriodStatus,
-} from "@/lib/benefits.functions";
-import type { BenefitEntry, BenefitParameter } from "@/lib/benefits-initial-data";
+  DEFAULT_BENEFIT_PARAMETERS,
+  INITIAL_BENEFIT_ENTRIES,
+  type BenefitEntry,
+  type BenefitParameter,
+} from "@/lib/benefits-initial-data";
+import { computeBenefitCalculations } from "@/lib/benefits.functions";
 
 export const Route = createFileRoute("/_authenticated/beneficios/$")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "Gestão Mensal de Benefícios | PRISMA" },
@@ -100,15 +92,6 @@ export function BeneficiosPage() {
   const { data: access } = useAccess();
   const isMaster = access?.isMaster ?? false;
 
-  const getEntriesFn = useServerFn(getBenefitEntries);
-  const getParamsFn = useServerFn(getBenefitParameters);
-  const getStatusesFn = useServerFn(getBenefitPeriodStatuses);
-  const saveEntryFn = useServerFn(saveBenefitEntry);
-  const deleteEntryFn = useServerFn(deleteBenefitEntry);
-  const toggleStatusFn = useServerFn(toggleBenefitPeriodStatus);
-  const saveParamsFn = useServerFn(saveBenefitParameters);
-  const resetBaselineFn = useServerFn(resetBenefitsToSpreadsheetBaseline);
-
   const [activeTab, setActiveTab] = useState<"lancamentos" | "consolidado" | "parametros">("lancamentos");
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -121,34 +104,81 @@ export function BeneficiosPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
-  // Queries
+  // Queries using client-side supabase directly (safe, reactive and authenticated)
   const entriesQuery = useQuery({
     queryKey: ["benefit-entries", year],
-    queryFn: () => getEntriesFn({ data: { year } }),
+    queryFn: async () => {
+      try {
+        const { data } = await supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", `benefits_data_${year}`)
+          .maybeSingle();
+
+        if (data?.value && Array.isArray(data.value)) {
+          return data.value as BenefitEntry[];
+        }
+      } catch (err) {
+        console.warn("Could not load from app_settings, using baseline data:", err);
+      }
+      return INITIAL_BENEFIT_ENTRIES.filter((e) => e.year === year);
+    },
   });
 
   const paramsQuery = useQuery({
     queryKey: ["benefit-parameters"],
-    queryFn: () => getParamsFn(),
+    queryFn: async () => {
+      try {
+        const { data } = await supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", "benefit_parameters")
+          .maybeSingle();
+
+        if (data?.value && Array.isArray(data.value)) {
+          return data.value as BenefitParameter[];
+        }
+      } catch (err) {
+        console.warn("Could not load parameters, using default:", err);
+      }
+      return DEFAULT_BENEFIT_PARAMETERS;
+    },
   });
 
   const statusesQuery = useQuery({
     queryKey: ["benefit-statuses", year],
-    queryFn: () => getStatusesFn({ data: { year } }),
+    queryFn: async () => {
+      try {
+        const { data } = await supabase
+          .from("app_settings")
+          .select("value")
+          .eq("key", `benefits_period_statuses_${year}`)
+          .maybeSingle();
+
+        if (data?.value && typeof data.value === "object") {
+          return data.value as Record<string, "estimado" | "fechado">;
+        }
+      } catch (err) {
+        console.warn("Could not load period statuses:", err);
+      }
+      return {} as Record<string, "estimado" | "fechado">;
+    },
   });
 
   const allEntries = entriesQuery.data ?? [];
   const parameters = paramsQuery.data ?? [];
   const periodStatuses = statusesQuery.data ?? {};
 
-  // Store access filtering for managers
+  // Store access
   const availableStores = useMemo(() => {
     return ALL_SYSTEM_STORES.map((s) => s.name);
   }, []);
 
-  // Entries filtered for the current view
+  // Entries filtered for current view
   const currentMonthEntries = useMemo(() => {
-    return allEntries.filter((e) => e.month === month && e.storeName.toLowerCase() === selectedStore.toLowerCase());
+    return allEntries.filter(
+      (e) => e.month === month && e.storeName.toLowerCase() === selectedStore.toLowerCase()
+    );
   }, [allEntries, month, selectedStore]);
 
   const filteredCollaborators = useMemo(() => {
@@ -161,7 +191,7 @@ export function BeneficiosPage() {
   const currentPeriodKey = `${selectedStore}-${month}`;
   const isPeriodClosed = periodStatuses[currentPeriodKey] === "fechado";
 
-  // Summary calculations for the active store & month
+  // Summary calculations
   const storeSummary = useMemo(() => {
     let totalBeneficios = 0;
     let totalVr = 0;
@@ -177,11 +207,10 @@ export function BeneficiosPage() {
     }
 
     const avgPerPerson = count > 0 ? totalBeneficios / count : 0;
-
     return { totalBeneficios, totalVr, totalVt, totalAditivos, count, avgPerPerson };
   }, [currentMonthEntries]);
 
-  // Consolidated table calculations: 12 stores x 12 months
+  // Consolidated table calculations
   const consolidatedMatrix = useMemo(() => {
     const matrix: Record<string, { monthlyTotals: number[]; monthlyCounts: number[]; annualTotal: number; avgPerson: number }> = {};
 
@@ -195,9 +224,9 @@ export function BeneficiosPage() {
     });
 
     for (const e of allEntries) {
-      const storeKey = ALL_SYSTEM_STORES.find(
-        (s) => s.name.toLowerCase() === e.storeName.toLowerCase()
-      )?.name || e.storeName;
+      const storeKey =
+        ALL_SYSTEM_STORES.find((s) => s.name.toLowerCase() === e.storeName.toLowerCase())?.name ||
+        e.storeName;
 
       if (!matrix[storeKey]) {
         matrix[storeKey] = {
@@ -236,9 +265,63 @@ export function BeneficiosPage() {
     return { totals, grandAnnual };
   }, [consolidatedMatrix]);
 
-  // Mutations
+  // Mutations using client-side supabase directly
   const saveEntryMutation = useMutation({
-    mutationFn: (data: any) => saveEntryFn({ data }),
+    mutationFn: async (input: any) => {
+      const settingKey = `benefits_data_${year}`;
+      const currentList = [...allEntries];
+
+      const calcs = computeBenefitCalculations({
+        diasMes: input.diasMes,
+        folgas: input.folgas,
+        valorVr: input.valorVr,
+        vtDiarista: input.vtDiarista,
+        vtMensalista: input.vtMensalista,
+        aditivoVt: input.aditivoVt,
+        aditivoVr: input.aditivoVr,
+      });
+
+      const entryId =
+        input.id ||
+        `ben-${input.storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${year}-${input.month}-${input.collaborator.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+
+      const newRecord: BenefitEntry = {
+        id: entryId,
+        storeName: input.storeName,
+        collaborator: input.collaborator.trim(),
+        year: input.year,
+        month: input.month,
+        diasMes: input.diasMes,
+        folgas: input.folgas,
+        diasDevidos: calcs.diasDevidos,
+        valorVr: input.valorVr,
+        totalVr: calcs.totalVr,
+        vtDiarista: input.vtDiarista,
+        vtMensalista: input.vtMensalista,
+        depositoDiario: calcs.depositoDiario,
+        totalVt: calcs.totalVt,
+        aditivoVt: input.aditivoVt,
+        aditivoVr: input.aditivoVr,
+        obs: (input.obs || "").trim(),
+        totalBeneficios: calcs.totalBeneficios,
+      };
+
+      const existingIdx = currentList.findIndex((e) => e.id === entryId);
+      if (existingIdx >= 0) {
+        currentList[existingIdx] = newRecord;
+      } else {
+        currentList.push(newRecord);
+      }
+
+      await supabase.from("app_settings").upsert({
+        key: settingKey,
+        value: currentList as any,
+        description: `Dados mensais de benefícios do ano ${year}`,
+        updated_at: new Date().toISOString(),
+      });
+
+      return newRecord;
+    },
     onSuccess: () => {
       toast.success("Lançamento de benefício salvo com sucesso!");
       setEditingEntry(null);
@@ -248,7 +331,19 @@ export function BeneficiosPage() {
   });
 
   const deleteEntryMutation = useMutation({
-    mutationFn: (id: string) => deleteEntryFn({ data: { id, year } }),
+    mutationFn: async (id: string) => {
+      const settingKey = `benefits_data_${year}`;
+      const filtered = allEntries.filter((e) => e.id !== id);
+
+      await supabase.from("app_settings").upsert({
+        key: settingKey,
+        value: filtered as any,
+        description: `Dados mensais de benefícios do ano ${year}`,
+        updated_at: new Date().toISOString(),
+      });
+
+      return true;
+    },
     onSuccess: () => {
       toast.success("Colaborador removido do período!");
       setDeletingId(null);
@@ -258,9 +353,21 @@ export function BeneficiosPage() {
   });
 
   const toggleStatusMutation = useMutation({
-    mutationFn: (newStatus: "estimado" | "fechado") =>
-      toggleStatusFn({ data: { year, month, storeName: selectedStore, status: newStatus } }),
-    onSuccess: (_, newStatus) => {
+    mutationFn: async (newStatus: "estimado" | "fechado") => {
+      const settingKey = `benefits_period_statuses_${year}`;
+      const current = { ...periodStatuses };
+      current[`${selectedStore}-${month}`] = newStatus;
+
+      await supabase.from("app_settings").upsert({
+        key: settingKey,
+        value: current as any,
+        description: `Status de fechamento dos períodos de benefícios para ${year}`,
+        updated_at: new Date().toISOString(),
+      });
+
+      return newStatus;
+    },
+    onSuccess: (newStatus) => {
       toast.success(
         newStatus === "fechado"
           ? `Mês ${MONTHS[(month || 1) - 1] ?? "Mês"} de ${selectedStore} FECHADO!`
@@ -272,7 +379,15 @@ export function BeneficiosPage() {
   });
 
   const saveParamsMutation = useMutation({
-    mutationFn: (parameters: BenefitParameter[]) => saveParamsFn({ data: { parameters } }),
+    mutationFn: async (newParams: BenefitParameter[]) => {
+      await supabase.from("app_settings").upsert({
+        key: "benefit_parameters",
+        value: newParams as any,
+        description: "Parâmetros e regras de VR e VT por região e loja",
+        updated_at: new Date().toISOString(),
+      });
+      return true;
+    },
     onSuccess: () => {
       toast.success("Parâmetros de benefícios salvos com sucesso!");
       qc.invalidateQueries({ queryKey: ["benefit-parameters"] });
@@ -281,9 +396,18 @@ export function BeneficiosPage() {
   });
 
   const resetMutation = useMutation({
-    mutationFn: () => resetBaselineFn({ data: { year } }),
-    onSuccess: (res) => {
-      toast.success(`Base restaurada com sucesso: ${res.count} registros carregados.`);
+    mutationFn: async () => {
+      const settingKey = `benefits_data_${year}`;
+      await supabase.from("app_settings").upsert({
+        key: settingKey,
+        value: INITIAL_BENEFIT_ENTRIES as any,
+        description: `Dados de benefícios restaurados para base inicial da planilha (${year})`,
+        updated_at: new Date().toISOString(),
+      });
+      return true;
+    },
+    onSuccess: () => {
+      toast.success(`Base restaurada com sucesso: ${INITIAL_BENEFIT_ENTRIES.length} registros carregados.`);
       setConfirmReset(false);
       qc.invalidateQueries();
     },
