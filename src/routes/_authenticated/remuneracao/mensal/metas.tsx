@@ -34,6 +34,9 @@ import {
   duplicateKeys,
   guessColumn,
   normalize,
+  parseWorkbookAuto,
+  type AutoImportedRow,
+  type AutoImportResult,
   type ColumnMap,
   type ParsedRow,
 } from "@/lib/goal-import";
@@ -1527,7 +1530,11 @@ function ColumnAutoReadCard({
 
 /* --------------------------------------------------------- Import wizard */
 
-type Step = "upload" | "map" | "review";
+type Step = "upload" | "review";
+
+type EnhancedReviewRow = AutoImportedRow & {
+  pctAting: number | null;
+};
 
 function ImportWizard() {
   const qc = useQueryClient();
@@ -1537,162 +1544,191 @@ function ImportWizard() {
   const importActualFn = useServerFn(importActualRevenue);
   const { data: stores } = useStores();
 
-  const [importMode, setImportMode] = useState<"meta" | "realizado">("meta");
+  const [importMode, setImportMode] = useState<"realizado" | "meta">("realizado");
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
-  const [sheets, setSheets] = useState<string[]>([]);
-  const [sheet, setSheet] = useState("");
-  const [workbook, setWorkbook] = useState<unknown>(null);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [raw, setRaw] = useState<Array<Record<string, unknown>>>([]);
-  const [map, setMap] = useState<ColumnMap>({ store: "", month: "", receita: "", taxa: "", tc: "" });
+  const [baseYear, setBaseYear] = useState(nowYear);
+  const [workbook, setWorkbook] = useState<any>(null);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
-  const [baseYear, setBaseYear] = useState(importMode === "meta" ? nowYear - 1 : nowYear);
-  const [confirmConflicts, setConfirmConflicts] = useState<Array<{ store_id: string; month: number }> | null>(
-    null,
-  );
 
-  async function loadSheet(wb: unknown, name: string) {
-    const XLSX = await import("xlsx");
-    const sheetObj = (wb as { Sheets: Record<string, unknown> }).Sheets[name];
-    const json = XLSX.utils.sheet_to_json(sheetObj as never, { defval: "", raw: true }) as Array<
-      Record<string, unknown>
-    >;
-    const cols = json.length > 0 ? Object.keys(json[0]!) : [];
-    setHeaders(cols);
-    setRaw(json);
-    setMap({
-      store: guessColumn(cols, COLUMN_HINTS.store),
-      month: guessColumn(cols, COLUMN_HINTS.month),
-      receita: guessColumn(cols, COLUMN_HINTS.receita),
-      taxa: guessColumn(cols, COLUMN_HINTS.taxa),
-      tc: guessColumn(cols, COLUMN_HINTS.tc),
-    });
-    setStep("map");
-  }
+  // Goals from database to cross-reference budget / orçado in the review table
+  const existingGoalsQuery = useQuery({
+    queryKey: ["store-goals", baseYear],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("store_goals")
+        .select("store_id, month, meta_faturamento, meta_tc, faturamento_base_ano_anterior")
+        .eq("year", baseYear);
+      return data ?? [];
+    },
+  });
+
+  const existingGoalsMap = useMemo(() => {
+    const m = new Map<string, { meta_faturamento: number; meta_tc: number; base: number }>();
+    for (const g of existingGoalsQuery.data ?? []) {
+      m.set(`${g.store_id}-${g.month}`, {
+        meta_faturamento: Number(g.meta_faturamento || 0),
+        meta_tc: Number(g.meta_tc || 0),
+        base: Number(g.faturamento_base_ano_anterior || 0),
+      });
+    }
+    return m;
+  }, [existingGoalsQuery.data]);
+
+  // Automatic parsing result
+  const autoResult = useMemo<AutoImportResult | null>(() => {
+    if (!workbook) return null;
+    return parseWorkbookAuto(workbook, baseYear, stores ?? [], overrides);
+  }, [workbook, baseYear, stores, overrides]);
 
   async function onFile(file: File) {
     try {
       const XLSX = await import("xlsx");
       const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { cellDates: true });
+      const wb = XLSX.read(buffer, { cellDates: true, raw: true });
+      // Attach XLSX instance so parseWorkbookAuto can use it directly
+      (wb as any).XLSX = XLSX;
       setWorkbook(wb);
       setFileName(file.name);
-      setSheets(wb.SheetNames);
-      setSheet(wb.SheetNames[0]!);
-      await loadSheet(wb, wb.SheetNames[0]!);
+      setStep("review");
+      toast.success("Planilha processada com sucesso!", {
+        description: "Confira a tabela abaixo com todas as lojas identificadas antes de salvar.",
+      });
     } catch (e) {
       toast.error("Não foi possível ler a planilha", { description: (e as Error).message });
     }
   }
 
-  const rows: ParsedRow[] = useMemo(
-    () => (map.store && map.month ? buildRows(raw, map, stores ?? [], overrides) : []),
-    [raw, map, stores, overrides],
-  );
-  const dups = useMemo(() => duplicateKeys(rows), [rows]);
-  const invalid = rows.filter((r) => r.errors.length > 0);
-  const unmatched = useMemo(() => {
-    const set = new Map<string, string>();
-    for (const r of rows) if (r.storeName && !r.storeId) set.set(normalize(r.storeName), r.storeName);
-    return [...set.entries()];
-  }, [rows]);
-  const valid = rows.filter((r) => r.errors.length === 0 && !dups.has(`${r.storeId}-${r.month}`));
+  // Rows with merged budget from database if not present in file
+  const reviewRows = useMemo<EnhancedReviewRow[]>(() => {
+    if (!autoResult) return [];
+    return autoResult.rows.map((r: AutoImportedRow) => {
+      const dbGoal = r.storeId ? existingGoalsMap.get(`${r.storeId}-${r.month}`) : null;
+      const orcado = r.faturamentoOrcado ?? dbGoal?.meta_faturamento ?? null;
+      const realizado = r.faturamentoRealizado;
+      const pctAting =
+        realizado !== null && orcado !== null && orcado > 0
+          ? (realizado / orcado) * 100
+          : null;
 
-  const doImport = useMutation({
-    mutationFn: async (replace: boolean) => {
-      if (importMode === "meta") {
-        return importFn({
-          data: {
-            base_year: baseYear,
-            replace,
-            source_file: fileName || null,
-            rows: valid.map((r) => ({
-              store_id: r.storeId!,
-              month: r.month!,
-              receita_vendas: Number(r.receita ?? 0),
-              taxa_servico: Number(r.taxa ?? 0),
-              tc: Number(r.tc ?? 0),
-            })),
-          },
-        });
-      } else {
+      return {
+        ...r,
+        faturamentoOrcado: orcado,
+        pctAting,
+      };
+    });
+  }, [autoResult, existingGoalsMap]);
+
+  const validRows = useMemo(() => reviewRows.filter((r: EnhancedReviewRow) => r.isValid && r.storeId), [reviewRows]);
+
+  // Summaries
+  const totals = useMemo(() => {
+    let totalRealizado = 0;
+    let totalOrcado = 0;
+    const storeSet = new Set<string>();
+
+    for (const r of validRows) {
+      if (r.faturamentoRealizado) totalRealizado += r.faturamentoRealizado;
+      if (r.faturamentoOrcado) totalOrcado += r.faturamentoOrcado;
+      if (r.storeName) storeSet.add(r.storeName);
+    }
+
+    const overallPct = totalOrcado > 0 ? (totalRealizado / totalOrcado) * 100 : null;
+
+    return {
+      identifiedStoresCount: storeSet.size,
+      totalRecords: validRows.length,
+      totalRealizado,
+      totalOrcado,
+      overallPct,
+    };
+  }, [validRows]);
+
+  const doSave = useMutation({
+    mutationFn: async () => {
+      if (validRows.length === 0) {
+        throw new Error("Nenhum registro válido para salvar.");
+      }
+
+      if (importMode === "realizado") {
+        const payload = validRows.map((r: EnhancedReviewRow) => ({
+          store_id: r.storeId!,
+          month: r.month,
+          revenue_actual: Number(r.faturamentoRealizado ?? 0),
+          tc_actual: Number(r.tc ?? 0),
+        }));
+
         const res = await importActualFn({
           data: {
             year: baseYear,
             source_file: fileName || null,
-            rows: valid.map((r) => ({
-              store_id: r.storeId!,
-              month: r.month!,
-              revenue_actual: Number(r.receita ?? 0) + Number(r.taxa ?? 0),
-              tc_actual: Number(r.tc ?? 0),
-            })),
+            rows: payload,
           },
         });
+
         return {
-          ok: true as const,
-          needsConfirmation: false as const,
-          conflicts: [],
-          imported: res.count,
-          goals: 0,
+          type: "realizado" as const,
+          count: res.count,
+        };
+      } else {
+        const payload = validRows.map((r: EnhancedReviewRow) => ({
+          store_id: r.storeId!,
+          month: r.month,
+          receita_vendas: Number(r.faturamentoBaseAnoAnterior ?? r.faturamentoOrcado ?? 0),
+          taxa_servico: 0,
+          tc: Number(r.tc ?? 0),
+        }));
+
+        const res = await importFn({
+          data: {
+            base_year: baseYear - 1,
+            replace: true,
+            source_file: fileName || null,
+            rows: payload,
+          },
+        });
+
+        return {
+          type: "meta" as const,
+          count: res.imported,
+          goals: res.goals,
         };
       }
     },
     onSuccess: (res) => {
-      if (res.needsConfirmation) {
-        setConfirmConflicts(res.conflicts);
-        return;
-      }
-      setConfirmConflicts(null);
-      if (importMode === "meta") {
-        toast.success(`Importação para metas concluída: ${res.imported} linha(s) e ${res.goals} meta(s) geradas (+10%).`);
+      if (res.type === "realizado") {
+        toast.success("Faturamento Realizado salvo com sucesso!", {
+          description: `${res.count} registro(s) atualizados no sistema. O faturamento realizado agora é a fonte oficial para apuração.`,
+        });
       } else {
-        toast.success(`Importação do realizado concluída: ${res.imported} registro(s) atualizados.`);
+        toast.success("Metas importadas e salvas com sucesso!", {
+          description: `${res.count} registros salvos e ${res.goals} meta(s) geradas para ${baseYear}.`,
+        });
       }
+
       setStep("upload");
-      setRaw([]);
-      setHeaders([]);
+      setWorkbook(null);
       setFileName("");
       qc.invalidateQueries();
     },
-    onError: (e: Error) => toast.error("Importação bloqueada", { description: e.message }),
+    onError: (e: Error) => toast.error("Falha ao salvar importação", { description: e.message }),
   });
 
-  const storeName = (id: string) => (stores ?? []).find((s) => s.id === id)?.name ?? id;
-
   return (
-    <div className="space-y-4">
-      {/* Seletor de Tipo de Importação */}
+    <div className="space-y-6">
+      {/* 1. SELEÇÃO DO TIPO DE IMPORTAÇÃO E ANO */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Tipo de Importação</CardTitle>
-          <CardDescription>
-            Escolha se deseja importar o histórico para cálculo da meta ou o faturamento realizado do ano atual.
+          <CardTitle className="text-base font-bold flex items-center gap-2">
+            <Upload className="size-4 text-primary" />
+            <span>Fluxo de Importação Automática de Metas e Faturamento</span>
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Selecione o objetivo da importação. O sistema fará a leitura automática de todas as abas e lojas sem necessidade de seleção manual.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <div
-              onClick={() => {
-                setImportMode("meta");
-                setBaseYear(nowYear - 1);
-              }}
-              className={cn(
-                "cursor-pointer rounded-lg border-2 p-4 transition-all hover:bg-muted/30",
-                importMode === "meta"
-                  ? "border-primary bg-primary/5 shadow-sm"
-                  : "border-border text-muted-foreground",
-              )}
-            >
-              <div className="flex items-center gap-2 font-bold text-sm text-foreground">
-                <FileSpreadsheet className={cn("size-4", importMode === "meta" && "text-primary")} />
-                <span>IMPORTAR DADOS PARA META</span>
-              </div>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                Dados históricos do ano anterior ({nowYear - 1}) utilizados para calcular automaticamente a meta de {nowYear} (+10%).
-              </p>
-            </div>
-
             <div
               onClick={() => {
                 setImportMode("realizado");
@@ -1707,195 +1743,262 @@ function ImportWizard() {
             >
               <div className="flex items-center gap-2 font-bold text-sm text-foreground">
                 <Upload className={cn("size-4", importMode === "realizado" && "text-primary")} />
-                <span>IMPORTAR FATURAMENTO REALIZADO</span>
+                <span>1. IMPORTAR FATURAMENTO REALIZADO (OFICIAL)</span>
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                Dados realizados do ano atual ({nowYear}) para confronto direto com a meta orçada e apuração de atingimento.
+                Importa os faturamentos reais do ano ({nowYear}) para confronto direto com a meta orçada e apuração de atingimento para remuneração.
+              </p>
+            </div>
+
+            <div
+              onClick={() => {
+                setImportMode("meta");
+                setBaseYear(nowYear);
+              }}
+              className={cn(
+                "cursor-pointer rounded-lg border-2 p-4 transition-all hover:bg-muted/30",
+                importMode === "meta"
+                  ? "border-primary bg-primary/5 shadow-sm"
+                  : "border-border text-muted-foreground",
+              )}
+            >
+              <div className="flex items-center gap-2 font-bold text-sm text-foreground">
+                <FileSpreadsheet className={cn("size-4", importMode === "meta" && "text-primary")} />
+                <span>2. IMPORTAR HISTÓRICO / METAS</span>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Importa o histórico do ano base para definição das metas obrigatórias de cada loja.
               </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Seleção do Arquivo */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            1. Selecionar a planilha {importMode === "meta" ? "do ano anterior" : "do ano atual"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1.5">
-            <Label>{importMode === "meta" ? "Ano base (histórico anterior)" : "Ano de referência (realizado)"}</Label>
-            <Select value={String(baseYear)} onValueChange={(v) => setBaseYear(Number(v))}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[nowYear - 2, nowYear - 1, nowYear, nowYear + 1].map((y) => (
-                  <SelectItem key={y} value={String(y)}>
-                    {y}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void onFile(f);
-              e.target.value = "";
-            }}
-          />
-          <Button onClick={() => fileRef.current?.click()}>
-            <Upload className="size-4 mr-1.5" /> Importar Excel
-          </Button>
-          {fileName && (
-            <span className="flex items-center gap-2 text-sm text-muted-foreground">
-              <FileSpreadsheet className="size-4 text-primary" /> {fileName} · {raw.length} linha(s)
-            </span>
-          )}
-          {sheets.length > 1 && (
+          <div className="flex flex-wrap items-end gap-3 pt-2">
             <div className="space-y-1.5">
-              <Label>Aba</Label>
-              <Select
-                value={sheet}
-                onValueChange={(v) => {
-                  setSheet(v);
-                  if (workbook) void loadSheet(workbook, v);
-                }}
-              >
-                <SelectTrigger className="w-[200px]">
+              <Label className="text-xs font-semibold">Ano de Competência</Label>
+              <Select value={String(baseYear)} onValueChange={(v) => setBaseYear(Number(v))}>
+                <SelectTrigger className="w-[140px] text-xs font-bold">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {sheets.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
+                  {[nowYear - 2, nowYear - 1, nowYear, nowYear + 1].map((y) => (
+                    <SelectItem key={y} value={String(y)} className="text-xs">
+                      {y}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          )}
+
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void onFile(f);
+                e.target.value = "";
+              }}
+            />
+
+            <Button onClick={() => fileRef.current?.click()} className="font-bold text-xs">
+              <Upload className="size-4 mr-1.5" /> Selecionar e Carregar Arquivo Excel
+            </Button>
+
+            {fileName && (
+              <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground bg-muted/50 px-3 py-2 rounded-md border">
+                <FileSpreadsheet className="size-4 text-primary" /> {fileName}
+              </span>
+            )}
+          </div>
         </CardContent>
       </Card>
 
-      {step !== "upload" && headers.length > 0 && (
-        <ColumnAutoReadCard
-          headers={headers}
-          map={map}
-          setMap={setMap}
-        />
-      )}
-
-      {unmatched.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Vincular lojas não reconhecidas</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {unmatched.map(([key, label]) => (
-              <div key={key} className="space-y-1.5">
-                <Label>{label}</Label>
-                <Select
-                  value={overrides[key] ?? ""}
-                  onValueChange={(v) => setOverrides((o) => ({ ...o, [key]: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a loja cadastrada" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(stores ?? []).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {rows.length > 0 && (
-        <>
-          {invalid.length > 0 || dups.size > 0 ? (
-            <Alert variant="destructive">
-              <AlertTriangle className="size-4" />
-              <AlertTitle>Verifique antes de confirmar</AlertTitle>
-              <AlertDescription>
-                {invalid.length > 0 && <p>{invalid.length} linha(s) com problema serão ignoradas.</p>}
-                {dups.size > 0 && <p>{dups.size} combinação(ões) de loja + mês duplicadas na planilha.</p>}
-                <ul className="mt-1 list-disc pl-4 text-xs">
-                  {invalid.slice(0, 8).map((r) => (
-                    <li key={r.index}>
-                      Linha {r.index} ({r.storeName || "sem loja"}): {r.errors.join(", ")}
-                    </li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <Alert>
-              <CheckCircle2 className="size-4" />
-              <AlertTitle>Planilha validada</AlertTitle>
-              <AlertDescription>
-                {valid.length} linha(s) prontas para importar como {importMode === "meta" ? `ano base ${baseYear} (Meta ${baseYear + 1})` : `realizado de ${baseYear}`}.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <Card>
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-base">3. Pré-visualização</CardTitle>
-              <Button
-                onClick={() => doImport.mutate(false)}
-                disabled={valid.length === 0 || doImport.isPending}
-              >
-                {importMode === "meta" ? "Confirmar Dados para Meta (+10%)" : "Confirmar Faturamento Realizado"}
-              </Button>
+      {/* 2. ETAPA DE CONFERÊNCIA DAS METAS IMPORTADAS */}
+      {step === "review" && autoResult && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          {/* Card com Estatísticas Globais */}
+          <Card className="border-primary/30 bg-primary/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-extrabold flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="size-5 text-emerald-600" />
+                  <span>CONFERÊNCIA DAS METAS IMPORTADAS</span>
+                </div>
+                <Badge variant="outline" className="bg-background text-xs font-bold">
+                  {importMode === "realizado" ? "Modo: Faturamento Realizado" : "Modo: Metas Orçadas"}
+                </Badge>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Confira os valores processados para todas as lojas antes de efetivar a gravação oficial.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="px-0">
-              <div className="max-h-[520px] overflow-auto">
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                <div className="bg-background rounded-md p-3 border shadow-sm">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase">Lojas Identificadas</p>
+                  <p className="text-xl font-black text-foreground mt-0.5">
+                    {totals.identifiedStoresCount}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">loja(s)</span>
+                  </p>
+                </div>
+
+                <div className="bg-background rounded-md p-3 border shadow-sm">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase">Registros Encontrados</p>
+                  <p className="text-xl font-black text-foreground mt-0.5">
+                    {totals.totalRecords}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">linha(s)</span>
+                  </p>
+                </div>
+
+                <div className="bg-background rounded-md p-3 border shadow-sm">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase">Faturamento Orçado Total</p>
+                  <p className="text-xl font-black text-foreground mt-0.5">
+                    {brl(totals.totalOrcado)}
+                  </p>
+                </div>
+
+                <div className="bg-background rounded-md p-3 border-2 border-emerald-600/30 shadow-sm">
+                  <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">
+                    Faturamento Realizado Total
+                  </p>
+                  <p className="text-xl font-black text-emerald-700 dark:text-emerald-400 mt-0.5">
+                    {brl(totals.totalRealizado)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Alertas de Inconsistências (se houver) */}
+              {autoResult.unmappedStores.length > 0 && (
+                <Alert variant="destructive" className="mt-4">
+                  <AlertTriangle className="size-4" />
+                  <AlertTitle>Lojas não identificadas ({autoResult.unmappedStores.length})</AlertTitle>
+                  <AlertDescription>
+                    As seguintes lojas não foram encontradas no cadastro oficial e precisam ser vinculadas manualmente abaixo:
+                    <div className="grid gap-2 sm:grid-cols-2 mt-2">
+                      {autoResult.unmappedStores.map((unmapped: string) => (
+                        <div key={unmapped} className="flex items-center gap-2 bg-background p-2 rounded border text-foreground">
+                          <span className="font-semibold text-xs">{unmapped}:</span>
+                          <Select
+                            value={overrides[normalize(unmapped)] ?? ""}
+                            onValueChange={(v) => setOverrides((o) => ({ ...o, [normalize(unmapped)]: v }))}
+                          >
+                            <SelectTrigger className="h-7 text-xs">
+                              <SelectValue placeholder="Vincular à loja..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(stores ?? []).map((s) => (
+                                <SelectItem key={s.id} value={s.id} className="text-xs">
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Tabela de Conferência */}
+          <Card>
+            <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-bold">Detalhamento por Loja e Período</CardTitle>
+                <CardDescription className="text-xs">
+                  Valores que serão gravados no banco de dados oficial.
+                </CardDescription>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setStep("upload");
+                    setWorkbook(null);
+                  }}
+                  className="text-xs h-8"
+                >
+                  Cancelar
+                </Button>
+
+                <Button
+                  size="sm"
+                  onClick={() => doSave.mutate()}
+                  disabled={validRows.length === 0 || doSave.isPending}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs h-8 shadow-sm"
+                >
+                  {doSave.isPending ? "Gravando..." : "SALVAR METAS IMPORTADAS"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="px-0 pb-0">
+              <div className="overflow-x-auto max-h-[500px]">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="bg-muted/60 sticky top-0 z-10 text-xs font-bold uppercase">
                     <TableRow>
-                      <TableHead>Loja</TableHead>
-                      <TableHead>Mês</TableHead>
-                      <TableHead className="text-right">Receita de vendas</TableHead>
-                      <TableHead className="text-right">Taxa de serviço</TableHead>
-                      <TableHead className="text-right">Faturamento total</TableHead>
-                      <TableHead className="text-right">TC (Pedidos)</TableHead>
-                      <TableHead />
+                      <TableHead className="w-[200px]">Loja</TableHead>
+                      <TableHead className="w-[140px]">Período</TableHead>
+                      <TableHead className="text-right w-[160px]">Faturamento Orçado</TableHead>
+                      <TableHead className="text-right w-[180px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">
+                        Faturamento Realizado
+                      </TableHead>
+                      <TableHead className="text-right w-[110px]">TC (Pedidos)</TableHead>
+                      <TableHead className="text-right w-[120px]">% Atingimento</TableHead>
+                      <TableHead className="text-center w-[120px]">Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rows.slice(0, 400).map((r) => {
-                      const bad = r.errors.length > 0 || dups.has(`${r.storeId}-${r.month}`);
+                    {reviewRows.map((r: EnhancedReviewRow) => {
+                      const isOk = r.isValid && r.storeId;
                       return (
-                        <TableRow key={r.index} className={bad ? "bg-destructive/5" : undefined}>
-                          <TableCell className="font-medium">
-                            {r.storeId ? storeName(r.storeId) : r.storeName || "—"}
+                        <TableRow key={r.id} className={cn("text-xs", !isOk && "bg-destructive/5")}>
+                          <TableCell className="font-semibold">{r.storeName}</TableCell>
+                          <TableCell className="font-medium text-muted-foreground">
+                            {MONTHS[r.month - 1] ?? `Mês ${r.month}`}/{r.year}
                           </TableCell>
-                          <TableCell>{r.month ? MONTHS[r.month - 1] : "—"}</TableCell>
-                          <TableCell className="text-right">{brl(r.receita)}</TableCell>
-                          <TableCell className="text-right">{brl(r.taxa)}</TableCell>
-                          <TableCell className="text-right font-semibold">
-                            {brl(Number(r.receita ?? 0) + Number(r.taxa ?? 0))}
+                          <TableCell className="text-right font-medium">
+                            {r.faturamentoOrcado !== null ? brl(r.faturamentoOrcado) : <span className="text-muted-foreground">—</span>}
                           </TableCell>
-                          <TableCell className="text-right">{intFmt(r.tc)}</TableCell>
-                          <TableCell className="text-right">
-                            {bad ? (
-                              <Badge variant="outline" className="border-destructive/40 text-destructive">
-                                Ignorada
+                          <TableCell className="text-right font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/30 dark:bg-emerald-950/10 text-xs">
+                            {r.faturamentoRealizado !== null ? brl(r.faturamentoRealizado) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {r.tc !== null ? intFmt(r.tc) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-bold">
+                            {r.pctAting !== null ? (
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-xs font-bold",
+                                  r.pctAting >= 100
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                    : r.pctAting >= 90
+                                      ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300"
+                                      : "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300",
+                                )}
+                              >
+                                {r.pctAting.toFixed(1)}%
                               </Badge>
-                            ) : null}
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {isOk ? (
+                              <Badge className="bg-emerald-600 text-white font-bold text-[10px]">
+                                ✓ OK
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive" className="font-bold text-[10px]">
+                                ⚠️ Não identificada
+                              </Badge>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
@@ -1905,28 +2008,20 @@ function ImportWizard() {
               </div>
             </CardContent>
           </Card>
-        </>
-      )}
 
-      <AlertDialog open={!!confirmConflicts} onOpenChange={(o) => !o && setConfirmConflicts(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Já existe uma informação para este período.</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmConflicts?.length} registro(s) de {baseYear} já estão gravados:{" "}
-              {(confirmConflicts ?? [])
-                .slice(0, 6)
-                .map((c) => `${storeName(c.store_id)} — ${MONTHS[c.month - 1]}`)
-                .join(", ")}
-              {(confirmConflicts?.length ?? 0) > 6 ? "…" : ""}. Ao substituir, os dados existentes serão atualizados sem gerar duplicidades.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => doImport.mutate(true)}>Atualizar Registros</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          {/* Botão de Gravação no Rodapé */}
+          <div className="flex justify-end p-2">
+            <Button
+              size="lg"
+              onClick={() => doSave.mutate()}
+              disabled={validRows.length === 0 || doSave.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm px-8 py-3 shadow-md"
+            >
+              {doSave.isPending ? "Gravando Registros..." : "SALVAR METAS IMPORTADAS"}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
