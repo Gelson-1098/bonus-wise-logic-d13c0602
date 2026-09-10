@@ -255,16 +255,7 @@ function useConsultSnapshot(year: number) {
 
 export function useActuals(year: number) {
   const snapshot = useConsultSnapshot(year);
-  const read = useServerFn(readMetasConsultivo);
-  return useQuery({
-    queryKey: ["actuals-targets", year],
-    queryFn: async () => {
-      const snap = snapshot.data ?? (await read({ data: { year: Number(year) } }));
-      return snap.actuals;
-    },
-    staleTime: 1000 * 30,
-    refetchOnWindowFocus: true,
-  });
+  return { ...snapshot, data: snapshot.data?.actuals };
 }
 
 function MetasPage() {
