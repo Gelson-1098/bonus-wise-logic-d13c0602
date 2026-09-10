@@ -260,7 +260,7 @@ export function useActuals(year: number) {
 }
 
 function MetasPage() {
-  const { data: access } = useAccess();
+  const { data: access, isLoading: accessLoading } = useAccess();
   const isMaster = access?.isMaster ?? false;
 
   return (
@@ -269,13 +269,20 @@ function MetasPage() {
       description={
         isMaster
           ? "Orçamento oficial por loja e mês — base do ano anterior + 10% (Edição exclusiva Master)"
-          : "Orçamento oficial de metas da sua loja — base do ano anterior + 10% (Somente leitura)"
+          : "Orçamento oficial de metas — consulta de todas as lojas (Somente leitura)"
       }
     >
-      {isMaster ? <MasterMetas /> : <ManagerMetas />}
+      {accessLoading || !access ? (
+        <div className="py-10 text-center text-sm text-muted-foreground">Carregando permissões...</div>
+      ) : isMaster ? (
+        <MasterMetas />
+      ) : (
+        <ManagerMetas />
+      )}
     </AppShell>
   );
 }
+
 
 /* ------------------------------------------------------------------ Master View */
 
