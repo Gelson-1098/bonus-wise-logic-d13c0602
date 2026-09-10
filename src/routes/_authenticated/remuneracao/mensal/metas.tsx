@@ -702,11 +702,10 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
                   variant="outline"
                   size="sm"
                   className="border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold"
-                  onClick={() => syncPdfMutation.mutate()}
-                  disabled={syncPdfMutation.isPending}
+                  onClick={() => onImportActuals?.()}
                 >
-                  <FileText className="size-3.5 mr-1.5 text-primary" />
-                  Sincronizar PDF (+10%)
+                  <Upload className="size-3.5 mr-1.5 text-primary" />
+                  📥 Importar Faturamento Realizado
                 </Button>
               </>
             )}
