@@ -284,13 +284,15 @@ export function useActuals(year: number) {
         const { data: periods, error: pErr } = await supabase
           .from("bonus_periods")
           .select("id, store_id, month, year")
-          .eq("year", year);
+          .eq("year", Number(year));
 
         if (!pErr && periods && periods.length > 0) {
           const periodMap = new Map<string, { store_id: string; month: number }>();
           const periodIds: string[] = [];
           for (const p of periods) {
-            periodMap.set(p.id, { store_id: p.store_id, month: p.month });
+            const sid = String(p.store_id).trim();
+            const m = Number(p.month);
+            periodMap.set(p.id, { store_id: sid, month: m });
             periodIds.push(p.id);
           }
 
@@ -319,12 +321,50 @@ export function useActuals(year: number) {
         console.warn("bonus_periods + store_targets query warning:", err);
       }
 
-      // 2. Complemento / Fallback de revenue_history para o mesmo ano
+      // 2. Busca ampla complementar de todos os períodos para garantir correspondência
+      try {
+        const { data: allPeriods } = await supabase
+          .from("bonus_periods")
+          .select("id, store_id, month, year");
+
+        if (allPeriods && allPeriods.length > 0) {
+          const matchingPeriods = allPeriods.filter((p) => Number(p.year) === Number(year));
+          const pMap = new Map(matchingPeriods.map((p) => [p.id, p]));
+          const pIds = matchingPeriods.map((p) => p.id);
+
+          if (pIds.length > 0) {
+            const { data: allTargets } = await supabase
+              .from("store_targets")
+              .select("id, period_id, revenue_actual, tc_actual")
+              .in("period_id", pIds);
+
+            if (allTargets) {
+              for (const t of allTargets) {
+                const p = pMap.get(t.period_id);
+                if (p) {
+                  const rev = t.revenue_actual != null ? Number(t.revenue_actual) : null;
+                  const tc = t.tc_actual != null ? Number(t.tc_actual) : null;
+                  if (rev != null || tc != null) {
+                    const k = `${String(p.store_id).trim()}-${Number(p.month)}`;
+                    if (!map.has(k) || map.get(k)?.revenue_actual == null) {
+                      map.set(k, { revenue_actual: rev, tc_actual: tc });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("allPeriods query warning:", e);
+      }
+
+      // 3. Complemento / Fallback de revenue_history para o mesmo ano
       try {
         const { data: revHist, error: rErr } = await supabase
           .from("revenue_history")
           .select("store_id, month, receita_vendas, tc, faturamento_base_meta")
-          .eq("year", year);
+          .eq("year", Number(year));
 
         if (!rErr && revHist) {
           for (const rh of revHist) {
@@ -336,7 +376,7 @@ export function useActuals(year: number) {
                   : null;
             const tc = rh.tc != null && Number(rh.tc) > 0 ? Number(rh.tc) : null;
             if (rev != null || tc != null) {
-              const key = `${rh.store_id}-${rh.month}`;
+              const key = `${String(rh.store_id).trim()}-${Number(rh.month)}`;
               const existing = map.get(key);
               if (!existing || existing.revenue_actual == null) {
                 map.set(key, {
@@ -361,6 +401,8 @@ export function useActuals(year: number) {
         };
       });
     },
+    staleTime: 1000 * 30,
+    refetchOnWindowFocus: true,
   });
 }
 
