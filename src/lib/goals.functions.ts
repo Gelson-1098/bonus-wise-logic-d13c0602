@@ -360,11 +360,16 @@ export const updateStoreGoalManual = createServerFn({ method: "POST" })
       .update({
         meta_faturamento: data.meta_faturamento,
         meta_tc: data.meta_tc,
+        ...(data.faturamento_base != null
+          ? { faturamento_base_ano_anterior: data.faturamento_base }
+          : {}),
+        ...(data.tc_base != null ? { tc_ano_anterior: data.tc_base } : {}),
         version: Number(prev.version) + 1,
         updated_at: new Date().toISOString(),
       })
       .eq("id", data.goal_id);
     if (updErr) throw new Error(updErr.message);
+
 
     const storeName = (prev.stores as { name?: string } | null)?.name ?? "Loja";
     await supabase.from("audit_logs").insert({
