@@ -468,6 +468,17 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
   const [metric, setMetric] = useState<"faturamento" | "tc">("faturamento");
   const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
   const [editingGoal, setEditingGoal] = useState<EditGoalPayload | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState(0); // 0 = Ano completo
+
+  const displayMonths = useMemo(() => {
+    if (selectedMonth === 0) return PDF_MONTHS;
+    const name = MONTHS[selectedMonth - 1];
+    return [{ month: selectedMonth, label: name.slice(0, 3).toUpperCase(), full: name }];
+  }, [selectedMonth]);
+
+  const periodLabelText = selectedMonth === 0
+    ? `Jun–Dez/${year}`
+    : `${MONTHS[selectedMonth - 1]}/${year}`;
 
   const { data: stores } = useStores();
 
