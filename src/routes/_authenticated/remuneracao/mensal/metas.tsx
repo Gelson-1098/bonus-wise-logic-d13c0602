@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -22,6 +22,9 @@ import {
   ChevronRight,
   Download,
   Edit2,
+  Edit3,
+  Loader2,
+  AlertTriangle,
   FileSpreadsheet,
   FileText,
   History,
@@ -44,8 +47,11 @@ import {
   saveGoalGrowth,
   syncOfficialPdfGoals,
   updateStoreGoalManual,
+  generateGoals,
+  importRevenueHistory,
 } from "@/lib/goals.functions";
-import { parseWorkbookAuto } from "@/lib/goal-import";
+import { parseWorkbookAuto, normalize, type AutoImportedRow, type AutoImportResult } from "@/lib/goal-import";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import * as XLSX from "xlsx";
 
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/metas")({
