@@ -28,6 +28,7 @@ import {
   FileSpreadsheet,
   
   History,
+  MessageCircle,
   Plus,
   RefreshCw,
   Share2,
