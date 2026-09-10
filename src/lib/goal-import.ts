@@ -370,9 +370,24 @@ export function parseWorkbookAuto(
       let fatOrcadoCol = -1;
       let fatBaseCol = -1;
       let tcCol = -1;
+      let extIdCol = -1;
 
       headerCols.forEach((h, idx) => {
         const nh = normalize(h);
+
+        // ID externo da unidade (sinal forte de identificação)
+        if (
+          nh === "id" ||
+          nh === "id externo" ||
+          nh === "codigo externo" ||
+          nh === "cod externo" ||
+          nh === "id filial" ||
+          nh === "id loja" ||
+          nh.includes("id externo")
+        ) {
+          extIdCol = idx;
+        }
+
 
         if (nh === "filial" || nh.includes("filial") || nh === "sigla" || nh === "codigo" || nh === "cod") {
           if (filialCol === -1 || nh === "filial") filialCol = idx;
