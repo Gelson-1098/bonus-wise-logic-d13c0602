@@ -204,99 +204,49 @@ export function parseYearText(text: string): number | null {
   return parseSmartMonthAndYear(text).year;
 }
 
-/** Match store deterministically with strict header & blacklist filtering */
+/**
+ * Identificação de loja — delega 100% para o resolvedor central
+ * (`src/lib/store-registry.ts`). Nenhuma heurística local.
+ */
+export function resolveRowStore(
+  input: { externalId?: unknown; code?: unknown; name?: unknown },
+  stores: Array<{ id: string; name: string; code: string | null }> = []
+): {
+  status: ResolutionStatus;
+  reason: string;
+  canonical: CanonicalStore | null;
+  dbStore: { id: string; name: string } | null;
+  candidates: string[];
+} {
+  const res = resolveStore(input);
+  const official = res.store;
+  const dbMatch = official ? findDbStore(official, stores) : null;
+
+  return {
+    status: res.status,
+    reason: res.reason,
+    canonical: official
+      ? {
+          key: official.key,
+          name: official.name,
+          code: official.code,
+          city: official.city,
+          state: official.state,
+          aliases: [...official.aliases, ...official.codeAliases],
+        }
+      : null,
+    dbStore: dbMatch ? { id: dbMatch.id, name: dbMatch.name } : null,
+    candidates: res.candidates.map((c) => `${c.name} (${c.code})`),
+  };
+}
+
 export function matchCanonicalStore(
   rawText: unknown,
   stores: Array<{ id: string; name: string; code: string | null }> = []
 ): { canonical: CanonicalStore; dbStore: { id: string; name: string } | null } | null {
-  if (rawText === null || rawText === undefined) return null;
-  const rawStr = String(rawText).trim();
-  if (!rawStr) return null;
-
-  // Ignore concatenated lists or headers
-  if (rawStr.includes(",") || rawStr.includes(";") || rawStr.length > 60) return null;
-  const norm = normalize(rawStr);
-  if (!norm) return null;
-
-  // Blacklist non-store header labels
-  const blacklist = [
-    "resumo de venda", "resumo", "periodo de", "quebra por filial", "empresa", "unidade",
-    "filial", "total de filiais", "total", "consolidado", "ticket medio", "desconsideradas",
-    "observacao", "obs", "produtos por atendimento", "venda offline", "faturamento", "status"
-  ];
-  if (blacklist.some((b) => norm.includes(b))) return null;
-
-  let matchedCs: CanonicalStore | null = null;
-
-  // 1. Exact match with code, name, key, or aliases (including "dex-dacli", "dacli", etc.)
-  for (const cs of CANONICAL_STORES) {
-    if (normalize(cs.name) === norm || normalize(cs.code) === norm || normalize(cs.key) === norm) {
-      matchedCs = cs;
-      break;
-    }
-    if (cs.aliases && cs.aliases.some((a) => normalize(a) === norm)) {
-      matchedCs = cs;
-      break;
-    }
-  }
-
-  // 2. Clean normalized match
-  if (!matchedCs) {
-    const clean = normalizeStoreName(rawStr);
-    if (clean) {
-      for (const cs of CANONICAL_STORES) {
-        const csClean = normalizeStoreName(cs.name);
-        if (csClean === clean) {
-          matchedCs = cs;
-          break;
-        }
-        if (cs.aliases && cs.aliases.some((a) => normalizeStoreName(a) === clean)) {
-          matchedCs = cs;
-          break;
-        }
-      }
-    }
-  }
-
-  // 3. Substring match (minimum 4 chars)
-  if (!matchedCs) {
-    const clean = normalizeStoreName(rawStr);
-    if (clean && clean.length >= 4) {
-      for (const cs of CANONICAL_STORES) {
-        const csClean = normalizeStoreName(cs.name);
-        if (csClean.length >= 4 && (clean.includes(csClean) || csClean.includes(clean))) {
-          matchedCs = cs;
-          break;
-        }
-        if (
-          cs.aliases &&
-          cs.aliases.some((a) => {
-            const aClean = normalizeStoreName(a);
-            return aClean.length >= 4 && (clean.includes(aClean) || aClean.includes(clean));
-          })
-        ) {
-          matchedCs = cs;
-          break;
-        }
-      }
-    }
-  }
-
-  if (!matchedCs) return null;
-
-  // Match corresponding database store
-  const dbMatch = stores.find(
-    (s) =>
-      normalize(s.name) === normalize(matchedCs!.name) ||
-      normalize(s.name) === normalize(matchedCs!.key) ||
-      (s.code && normalize(s.code) === normalize(matchedCs!.code)) ||
-      (matchedCs!.aliases && matchedCs!.aliases.some((a) => normalize(a) === normalize(s.name)))
-  );
-
-  return {
-    canonical: matchedCs,
-    dbStore: dbMatch ? { id: dbMatch.id, name: dbMatch.name } : null,
-  };
+  const res = resolveRowStore({ name: rawText, code: rawText }, stores);
+  if (res.status !== "ok" || !res.canonical) return null;
+  return { canonical: res.canonical, dbStore: res.dbStore };
 }
 
 export function matchStore(
