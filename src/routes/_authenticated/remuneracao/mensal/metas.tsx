@@ -961,7 +961,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
                                   tc: storeTc > 0 ? storeTc : null,
                                   pct: storePct,
                                   gap: storeGap,
-                                  monthLabel: `Acumulado Jun–Dez/${year}`,
+                                  monthLabel: periodLabelText,
                                 })
                               }
                             >
