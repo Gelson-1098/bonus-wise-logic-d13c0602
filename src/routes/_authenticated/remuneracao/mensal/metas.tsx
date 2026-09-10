@@ -2227,9 +2227,16 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
                                 ✓ OK
                               </Badge>
                             ) : (
-                              <Badge variant="destructive" className="font-bold text-[10px]">
-                                ⚠️ Pendente
-                              </Badge>
+                              <div className="space-y-1">
+                                <Badge variant="destructive" className="font-bold text-[10px]">
+                                  {r.statusText}
+                                </Badge>
+                                {r.errors.length > 0 && (
+                                  <p className="text-[10px] leading-tight text-destructive font-medium max-w-[220px] mx-auto">
+                                    {r.errors.join(" • ")}
+                                  </p>
+                                )}
+                              </div>
                             )}
                           </TableCell>
                         </TableRow>
