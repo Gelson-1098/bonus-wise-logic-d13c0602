@@ -738,7 +738,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
         {/* 1. FATURAMENTO ORÇADO */}
         <Card className="p-4 border-l-4 border-l-primary bg-card">
           <p className="text-xs font-semibold text-muted-foreground uppercase">
-            {metric === "faturamento" ? "Meta Orçada Total (Jun–Dez)" : "Meta TC Orçada (Jun–Dez)"}
+            {metric === "faturamento" ? `Meta Orçada Total (${selectedMonth === 0 ? "Jun–Dez" : MONTHS[selectedMonth - 1]})` : `Meta TC Orçada (${selectedMonth === 0 ? "Jun–Dez" : MONTHS[selectedMonth - 1]})`}
           </p>
           <p className="text-2xl font-black text-primary mt-1">
             {metric === "faturamento" ? brl(grandTotals.grandOrcado) : intFmt(grandTotals.grandOrcado)}
