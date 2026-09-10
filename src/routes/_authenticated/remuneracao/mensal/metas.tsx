@@ -1853,12 +1853,19 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
         // Historical metas mode
         let importedCount = 0;
 
-        for (const r of validRows) {
+        // Base histórica do ano anterior: sempre a partir dos valores do PRÓPRIO arquivo
+        // (coluna de base, quando existir; senão o total faturado do mês).
+        const baseOf = (r: (typeof validRows)[number]) =>
+          Number(r.faturamentoBaseAnoAnterior ?? r.faturamentoRealizado ?? r.faturamentoOrcado ?? 0);
+        // Meses sem faturamento no histórico não geram meta (não inventar valores).
+        const historyRows = validRows.filter((r) => baseOf(r) > 0);
+
+        for (const r of historyRows) {
           const payload = {
             store_id: r.storeId!,
             year: baseYear - 1,
             month: r.month,
-            receita_vendas: Number(r.faturamentoBaseAnoAnterior ?? r.faturamentoOrcado ?? 0),
+            receita_vendas: baseOf(r),
             taxa_servico: 0,
             tc: Number(r.tc ?? 0),
             source_file: fileName || null,
@@ -1891,10 +1898,10 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
               base_year: baseYear - 1,
               replace: true,
               source_file: fileName || null,
-              rows: validRows.map((r) => ({
+              rows: historyRows.map((r) => ({
                 store_id: r.storeId!,
                 month: r.month,
-                receita_vendas: Number(r.faturamentoBaseAnoAnterior ?? r.faturamentoOrcado ?? 0),
+                receita_vendas: baseOf(r),
                 taxa_servico: 0,
                 tc: Number(r.tc ?? 0),
               })),
