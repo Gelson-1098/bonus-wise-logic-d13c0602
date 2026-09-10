@@ -1,3 +1,194 @@
+import React, { useMemo, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { supabase } from "@/integrations/supabase/client";
+import { useAccess } from "@/hooks/use-auth";
+import { AppShell } from "@/components/app-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import {
+  Building2,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Edit2,
+  FileSpreadsheet,
+  FileText,
+  History,
+  Plus,
+  RefreshCw,
+  Share2,
+  TrendingUp,
+  Upload,
+  Users,
+  X,
+  AlertCircle,
+  CheckCircle2,
+  HelpCircle,
+} from "lucide-react";
+import { brl, MONTHS, periodLabel } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import {
+  deduplicateStores,
+  getGoalGrowth,
+  saveGoalGrowth,
+  syncOfficialPdfGoals,
+  updateStoreGoalManual,
+} from "@/lib/goals.functions";
+import { parseWorkbookAuto } from "@/lib/goal-import";
+import * as XLSX from "xlsx";
+
+export const Route = createFileRoute("/_authenticated/remuneracao/mensal/metas")({
+  head: () => ({
+    meta: [
+      { title: "Orçamento de Metas | PRISMA" },
+      {
+        name: "description",
+        content: "Orçamento oficial de metas mensais por loja e consolidação de faturamento realizado.",
+      },
+    ],
+  }),
+  component: MetasPage,
+});
+
+const intFmt = (v: number | null | undefined) =>
+  Number(v ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+
+const PDF_MONTHS = [
+  { month: 6, label: "JUN", full: "Junho" },
+  { month: 7, label: "JUL", full: "Julho" },
+  { month: 8, label: "AGO", full: "Agosto" },
+  { month: 9, label: "SET", full: "Setembro" },
+  { month: 10, label: "OUT", full: "Outubro" },
+  { month: 11, label: "NOV", full: "Novembro" },
+  { month: 12, label: "DEZ", full: "Dezembro" },
+];
+
+export function getAtingimentoStatus(pct: number | null) {
+  if (pct === null || !Number.isFinite(pct)) {
+    return {
+      label: "Não lançado",
+      shortLabel: "Não lançado",
+      icon: "⚪",
+      color: "text-muted-foreground",
+      badgeClass: "bg-muted text-muted-foreground border-border",
+      barColor: "bg-muted",
+      code: "none" as const,
+    };
+  }
+
+  if (pct >= 100) {
+    return {
+      label: "META SUPERADA",
+      shortLabel: "SUPERADA",
+      icon: "🟢",
+      color: "text-emerald-700 dark:text-emerald-400",
+      badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700",
+      barColor: "bg-emerald-500",
+      code: "superada" as const,
+    };
+  }
+
+  if (pct >= 90) {
+    return {
+      label: "ATINGIDO",
+      shortLabel: "ATINGIDO",
+      icon: "🟢",
+      color: "text-emerald-700 dark:text-emerald-400",
+      badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700",
+      barColor: "bg-emerald-500",
+      code: "atingido" as const,
+    };
+  }
+
+  if (pct >= 85) {
+    return {
+      label: "QUASE",
+      shortLabel: "QUASE",
+      icon: "🟡",
+      color: "text-amber-700 dark:text-amber-400",
+      badgeClass: "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700",
+      barColor: "bg-amber-500",
+      code: "quase" as const,
+    };
+  }
+
+  if (pct >= 80) {
+    return {
+      label: "ABAIXO",
+      shortLabel: "ABAIXO",
+      icon: "🔴",
+      color: "text-orange-700 dark:text-orange-400",
+      badgeClass: "bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/50 dark:text-orange-300 dark:border-orange-700",
+      barColor: "bg-orange-500",
+      code: "abaixo" as const,
+    };
+  }
+
+  return {
+    label: "CRÍTICO",
+    shortLabel: "CRÍTICO",
+    icon: "🔴",
+    color: "text-rose-700 dark:text-rose-400",
+    badgeClass: "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-700",
+    barColor: "bg-rose-600",
+    code: "critico" as const,
+  };
+}
+
+function AtingimentoIndicator({ pct, compact = false }: { pct: number | null; compact?: boolean }) {
+  if (pct === null || !Number.isFinite(pct)) {
+    return <span className="text-muted-foreground text-xs italic">Não lançado</span>;
+  }
+
+  const status = getAtingimentoStatus(pct);
+
+  if (compact) {
+    return (
+      <span className={cn("font-bold text-xs", status.color)}>
+        {pct.toFixed(1)}%
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-2">
+      <span className={cn("font-bold text-xs tabular-nums", status.color)}>
+        {pct.toFixed(1)}%
+      </span>
+      <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden shrink-0">
+        <div
+          className={cn("h-full rounded-full transition-all duration-300", status.barColor)}
+          style={{ width: `${Math.min(Math.max(pct, 0), 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function AtingimentoStatusBadge({ pct }: { pct: number | null }) {
+  const status = getAtingimentoStatus(pct);
+  return (
+    <Badge
+      variant="outline"
+      className={cn("text-[10px] font-bold px-1.5 py-0.5 whitespace-nowrap", status.badgeClass)}
+    >
+      <span className="mr-1">{status.icon}</span>
+      <span>{status.shortLabel}</span>
+    </Badge>
+  );
+}
+
 export function copyWhatsAppMessage(params: {
   storeName: string;
   meta: number;
