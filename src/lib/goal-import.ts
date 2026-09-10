@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { MONTHS } from "@/lib/format";
 import { CANONICAL_STORES, type CanonicalStore } from "@/lib/official-pdf-data";
+import { resolveStore, findDbStore, type ResolutionStatus } from "@/lib/store-registry";
 
 export type ColumnMap = {
   store: string;
@@ -39,6 +40,8 @@ export type AutoImportedRow = {
   isValid: boolean;
   statusText: string;
   errors: string[];
+  resolutionStatus: ResolutionStatus;
+  resolutionReason: string;
 };
 
 export type AutoImportResult = {
@@ -204,99 +207,49 @@ export function parseYearText(text: string): number | null {
   return parseSmartMonthAndYear(text).year;
 }
 
-/** Match store deterministically with strict header & blacklist filtering */
+/**
+ * Identificação de loja — delega 100% para o resolvedor central
+ * (`src/lib/store-registry.ts`). Nenhuma heurística local.
+ */
+export function resolveRowStore(
+  input: { externalId?: unknown; code?: unknown; name?: unknown },
+  stores: Array<{ id: string; name: string; code: string | null }> = []
+): {
+  status: ResolutionStatus;
+  reason: string;
+  canonical: CanonicalStore | null;
+  dbStore: { id: string; name: string } | null;
+  candidates: string[];
+} {
+  const res = resolveStore(input);
+  const official = res.store;
+  const dbMatch = official ? findDbStore(official, stores) : null;
+
+  return {
+    status: res.status,
+    reason: res.reason,
+    canonical: official
+      ? {
+          key: official.key,
+          name: official.name,
+          code: official.code,
+          city: official.city,
+          state: official.state,
+          aliases: [...official.aliases, ...official.codeAliases],
+        }
+      : null,
+    dbStore: dbMatch ? { id: dbMatch.id, name: dbMatch.name } : null,
+    candidates: res.candidates.map((c) => `${c.name} (${c.code})`),
+  };
+}
+
 export function matchCanonicalStore(
   rawText: unknown,
   stores: Array<{ id: string; name: string; code: string | null }> = []
 ): { canonical: CanonicalStore; dbStore: { id: string; name: string } | null } | null {
-  if (rawText === null || rawText === undefined) return null;
-  const rawStr = String(rawText).trim();
-  if (!rawStr) return null;
-
-  // Ignore concatenated lists or headers
-  if (rawStr.includes(",") || rawStr.includes(";") || rawStr.length > 60) return null;
-  const norm = normalize(rawStr);
-  if (!norm) return null;
-
-  // Blacklist non-store header labels
-  const blacklist = [
-    "resumo de venda", "resumo", "periodo de", "quebra por filial", "empresa", "unidade",
-    "filial", "total de filiais", "total", "consolidado", "ticket medio", "desconsideradas",
-    "observacao", "obs", "produtos por atendimento", "venda offline", "faturamento", "status"
-  ];
-  if (blacklist.some((b) => norm.includes(b))) return null;
-
-  let matchedCs: CanonicalStore | null = null;
-
-  // 1. Exact match with code, name, key, or aliases (including "dex-dacli", "dacli", etc.)
-  for (const cs of CANONICAL_STORES) {
-    if (normalize(cs.name) === norm || normalize(cs.code) === norm || normalize(cs.key) === norm) {
-      matchedCs = cs;
-      break;
-    }
-    if (cs.aliases && cs.aliases.some((a) => normalize(a) === norm)) {
-      matchedCs = cs;
-      break;
-    }
-  }
-
-  // 2. Clean normalized match
-  if (!matchedCs) {
-    const clean = normalizeStoreName(rawStr);
-    if (clean) {
-      for (const cs of CANONICAL_STORES) {
-        const csClean = normalizeStoreName(cs.name);
-        if (csClean === clean) {
-          matchedCs = cs;
-          break;
-        }
-        if (cs.aliases && cs.aliases.some((a) => normalizeStoreName(a) === clean)) {
-          matchedCs = cs;
-          break;
-        }
-      }
-    }
-  }
-
-  // 3. Substring match (minimum 4 chars)
-  if (!matchedCs) {
-    const clean = normalizeStoreName(rawStr);
-    if (clean && clean.length >= 4) {
-      for (const cs of CANONICAL_STORES) {
-        const csClean = normalizeStoreName(cs.name);
-        if (csClean.length >= 4 && (clean.includes(csClean) || csClean.includes(clean))) {
-          matchedCs = cs;
-          break;
-        }
-        if (
-          cs.aliases &&
-          cs.aliases.some((a) => {
-            const aClean = normalizeStoreName(a);
-            return aClean.length >= 4 && (clean.includes(aClean) || aClean.includes(clean));
-          })
-        ) {
-          matchedCs = cs;
-          break;
-        }
-      }
-    }
-  }
-
-  if (!matchedCs) return null;
-
-  // Match corresponding database store
-  const dbMatch = stores.find(
-    (s) =>
-      normalize(s.name) === normalize(matchedCs!.name) ||
-      normalize(s.name) === normalize(matchedCs!.key) ||
-      (s.code && normalize(s.code) === normalize(matchedCs!.code)) ||
-      (matchedCs!.aliases && matchedCs!.aliases.some((a) => normalize(a) === normalize(s.name)))
-  );
-
-  return {
-    canonical: matchedCs,
-    dbStore: dbMatch ? { id: dbMatch.id, name: dbMatch.name } : null,
-  };
+  const res = resolveRowStore({ name: rawText, code: rawText }, stores);
+  if (res.status !== "ok" || !res.canonical) return null;
+  return { canonical: res.canonical, dbStore: res.dbStore };
 }
 
 export function matchStore(
@@ -419,9 +372,24 @@ export function parseWorkbookAuto(
       let fatOrcadoCol = -1;
       let fatBaseCol = -1;
       let tcCol = -1;
+      let extIdCol = -1;
 
       headerCols.forEach((h, idx) => {
         const nh = normalize(h);
+
+        // ID externo da unidade (sinal forte de identificação)
+        if (
+          nh === "id" ||
+          nh === "id externo" ||
+          nh === "codigo externo" ||
+          nh === "cod externo" ||
+          nh === "id filial" ||
+          nh === "id loja" ||
+          nh.includes("id externo")
+        ) {
+          extIdCol = idx;
+        }
+
 
         if (nh === "filial" || nh.includes("filial") || nh === "sigla" || nh === "codigo" || nh === "cod") {
           if (filialCol === -1 || nh === "filial") filialCol = idx;
@@ -482,15 +450,22 @@ export function parseWorkbookAuto(
 
         const filialRaw = filialCol >= 0 ? row[filialCol] : null;
         const nomeRaw = nomeLojaCol >= 0 ? row[nomeLojaCol] : null;
-
-        const storeMatch = matchCanonicalStore(filialRaw, stores) || matchCanonicalStore(nomeRaw, stores);
-        if (!storeMatch) continue;
+        const extIdRaw = extIdCol >= 0 ? row[extIdCol] : null;
 
         const rawKey = normalize(String(filialRaw || nomeRaw || ""));
         const storeIdOverride = overrides[rawKey];
 
-        const storeId = storeIdOverride || (storeMatch.dbStore ? storeMatch.dbStore.id : null);
-        const storeName = storeMatch.canonical.name;
+        const resolution = resolveRowStore(
+          { externalId: extIdRaw, code: filialRaw, name: nomeRaw ?? filialRaw },
+          stores,
+        );
+
+        // Linha sem qualquer indício de unidade: ignora (cabeçalhos, notas, vazios)
+        if (resolution.status === "unknown" && !storeIdOverride) continue;
+
+        const storeId = storeIdOverride || (resolution.dbStore ? resolution.dbStore.id : null);
+        const storeName = resolution.canonical?.name ?? String(nomeRaw || filialRaw || "—");
+
 
         // Identify month and year
         const mesRaw = mesCol >= 0 ? row[mesCol] : null;
@@ -507,8 +482,19 @@ export function parseWorkbookAuto(
         const tc = tcCol >= 0 ? parseSmartNumber(row[tcCol]) : null;
 
         const errors: string[] = [];
-        if (!storeId) {
-          errors.push("Loja não cadastrada no banco de dados");
+        let statusText = "✓ OK";
+
+        if (resolution.status === "ambiguous") {
+          errors.push(resolution.reason);
+          statusText = "⚠️ AMBÍGUO — não será salvo";
+          unmappedStores.add(storeName);
+        } else if (resolution.status === "divergent") {
+          errors.push(resolution.reason);
+          statusText = "⛔ DIVERGÊNCIA — não será salvo";
+          unmappedStores.add(storeName);
+        } else if (!storeId) {
+          errors.push("Unidade oficial sem cadastro correspondente no banco de dados");
+          statusText = "⚠️ Loja não cadastrada";
           unmappedStores.add(storeName);
         } else {
           detectedStores.add(storeName);
@@ -516,19 +502,20 @@ export function parseWorkbookAuto(
 
         if (realFat === null && orcadoFat === null && baseFat === null) {
           errors.push("Faturamento ausente");
+          if (statusText === "✓ OK") statusText = "⚠️ Faturamento ausente";
         }
 
         const isValid = errors.length === 0;
 
         allRows.push({
-          id: `imp-${storeMatch.canonical.key}-${year}-${month}-${r}`,
+          id: `imp-${resolution.canonical?.key ?? (rawKey || "na")}-${year}-${month}-${r}`,
           sourceSheet: sheetName,
           rowNumber: r + 1,
           rawStore: String(filialRaw || nomeRaw || storeName),
           storeName,
           storeId,
-          canonicalKey: storeMatch.canonical.key,
-          code: storeMatch.canonical.code,
+          canonicalKey: resolution.canonical?.key ?? null,
+          code: resolution.canonical?.code ?? null,
           month,
           year,
           faturamentoRealizado: realFat,
@@ -536,8 +523,10 @@ export function parseWorkbookAuto(
           faturamentoBaseAnoAnterior: baseFat,
           tc: tc ? Math.round(tc) : null,
           isValid,
-          statusText: isValid ? "✓ OK" : "⚠️ Loja não identificada",
+          statusText,
           errors,
+          resolutionStatus: resolution.status,
+          resolutionReason: resolution.reason,
         });
       }
     }

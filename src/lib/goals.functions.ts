@@ -391,6 +391,7 @@ function normalizeText(text: string) {
 /** Limpa e unifica lojas duplicadas, migrando os registros relacionados para a loja canônica. */
 export async function cleanupAndStandardizeStores(supabase: SupabaseLike, userId: string) {
   const { CANONICAL_STORES } = await import("@/lib/official-pdf-data");
+  const { resolveStore } = await import("@/lib/store-registry");
 
   const { data: allStores, error: stErr } = await supabase
     .from("stores")
@@ -402,13 +403,11 @@ export async function cleanupAndStandardizeStores(supabase: SupabaseLike, userId
   let storesUpdated = 0;
 
   for (const canonical of CANONICAL_STORES) {
+    // Identificação estrita via matriz canônica centralizada (evita confundir
+    // Jabaquara/Spoleto e Gopoúva/Aeroporto por semelhança de nome).
     const matching = (allStores ?? []).filter((s: { name: string; code: string | null }) => {
-      const normName = normalizeText(s.name || "");
-      const normCode = normalizeText(s.code || "");
-      if (normCode === normalizeText(canonical.code)) return true;
-      if (normName === normalizeText(canonical.name)) return true;
-      if (normName === canonical.key) return true;
-      return canonical.aliases.some((a) => normName.includes(a) || a.includes(normName));
+      const res = resolveStore({ code: s.code, name: s.name });
+      return res.status === "ok" && res.store?.key === canonical.key;
     });
 
     let primary = matching.find((s: { code: string | null }) => s.code === canonical.code);
