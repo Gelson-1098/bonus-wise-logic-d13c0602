@@ -10,6 +10,8 @@ export type OfficialPdfRecord = {
   tm: number;
 };
 
+import { OFFICIAL_STORES } from "@/lib/store-registry";
+
 export type CanonicalStore = {
   key: string;
   name: string;
@@ -19,123 +21,18 @@ export type CanonicalStore = {
   aliases: string[];
 };
 
-export const CANONICAL_STORES: CanonicalStore[] = [
-  {
-    key: "aclimacao",
-    name: "Aclimação",
-    code: "ACL",
-    city: "São Paulo",
-    state: "SP",
-    aliases: ["aclimacao", "aclimação", "loja aclimacao", "sp aclimacao", "aclimacao sp"],
-  },
-  {
-    key: "campo belo",
-    name: "Campo Belo",
-    code: "CBL",
-    city: "São Paulo",
-    state: "SP",
-    aliases: ["campo belo", "sp campo belo", "campo belo sp"],
-  },
-  {
-    key: "guarulhos gopouva",
-    name: "Guarulhos Gopoúva",
-    code: "GGP",
-    city: "Guarulhos",
-    state: "SP",
-    aliases: ["guarulhos gopouva", "guarulhos gopoúva", "guarulhos", "gopouva"],
-  },
-  {
-    key: "jardim camburi",
-    name: "Jardim Camburi",
-    code: "JCB",
-    city: "Vitória",
-    state: "ES",
-    aliases: ["jardim camburi", "camburi", "es jardim camburi"],
-  },
-  {
-    key: "praia do canto",
-    name: "Praia do Canto",
-    code: "PDC",
-    city: "Vitória",
-    state: "ES",
-    aliases: ["praia do canto", "canto", "es praia do canto"],
-  },
-  {
-    key: "pinheiros",
-    name: "Pinheiros",
-    code: "PNH",
-    city: "São Paulo",
-    state: "SP",
-    aliases: ["pinheiros", "sp pinheiros", "pinheiros sp"],
-  },
-  {
-    key: "parque mandaqui",
-    name: "Parque Mandaqui",
-    code: "PMQ",
-    city: "São Paulo",
-    state: "SP",
-    aliases: ["parque mandaqui", "mandaqui", "sp parque mandaqui"],
-  },
-  {
-    key: "serra",
-    name: "Serra",
-    code: "SRR",
-    city: "Serra",
-    state: "ES",
-    aliases: ["serra", "es serra", "serra es"],
-  },
-  {
-    key: "vila clementino",
-    name: "Vila Clementino",
-    code: "VCL",
-    city: "São Paulo",
-    state: "SP",
-    aliases: ["vila clementino", "sp vila clementino", "clementino", "vila clementino sp"],
-  },
-  {
-    key: "spoleto",
-    name: "Spoleto",
-    code: "SPL",
-    city: "São Paulo",
-    state: "SP",
-    aliases: [
-      "spoleto",
-      "rua jabaquara",
-      "jabaquara",
-      "spoleto jabaquara",
-      "rua jabaquara sp",
-      "sp jabaquara",
-      "jabaquara sp",
-      "spoleto sp",
-      "sp spoleto",
-      "restaurante spoleto",
-      "loja spoleto",
-      "jbq",
-      "dex-jabaquara",
-      "dex jabaquara",
-      "dex-spoleto",
-      "dex spoleto",
-    ],
-  },
-  {
-    key: "aeroporto guarulhos",
-    name: "Aeroporto de Guarulhos",
-    code: "AGR",
-    city: "Guarulhos",
-    state: "SP",
-    aliases: [
-      "aeroporto de guarulhos",
-      "aeroporto guarulhos",
-      "guarulhos aeroporto",
-      "aeroporto internacional de guarulhos",
-      "gru",
-      "gru airport",
-      "aeroporto gru",
-      "dominos gru",
-      "domino s gru",
-    ],
-  },
-];
+/**
+ * Matriz canônica de lojas — derivada da ÚNICA fonte oficial
+ * (`src/lib/store-registry.ts`). Não duplicar mapeamentos aqui.
+ */
+export const CANONICAL_STORES: CanonicalStore[] = OFFICIAL_STORES.map((s) => ({
+  key: s.key,
+  name: s.name,
+  code: s.code,
+  city: s.city,
+  state: s.state,
+  aliases: [...s.aliases, ...s.codeAliases],
+}));
 
 export const OFFICIAL_PDF_STORES = CANONICAL_STORES.map((s) => s.name);
 
