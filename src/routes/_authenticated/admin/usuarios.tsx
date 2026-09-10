@@ -326,7 +326,7 @@ function UsuariosPage() {
           />
         </div>
 
-        {!passwordStatus.data?.configured && (
+        {passwordStatus.isSuccess && !passwordStatus.data?.configured && (
           <Card className="border-destructive/40">
             <CardContent className="flex flex-wrap items-center gap-3 py-4 text-sm">
               <KeyRound className="size-4 text-destructive" />
