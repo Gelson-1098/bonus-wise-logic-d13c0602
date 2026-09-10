@@ -40,6 +40,8 @@ export type AutoImportedRow = {
   isValid: boolean;
   statusText: string;
   errors: string[];
+  resolutionStatus: ResolutionStatus;
+  resolutionReason: string;
 };
 
 export type AutoImportResult = {
@@ -506,7 +508,7 @@ export function parseWorkbookAuto(
         const isValid = errors.length === 0;
 
         allRows.push({
-          id: `imp-${resolution.canonical?.key ?? rawKey || "na"}-${year}-${month}-${r}`,
+          id: `imp-${resolution.canonical?.key ?? (rawKey || "na")}-${year}-${month}-${r}`,
           sourceSheet: sheetName,
           rowNumber: r + 1,
           rawStore: String(filialRaw || nomeRaw || storeName),
