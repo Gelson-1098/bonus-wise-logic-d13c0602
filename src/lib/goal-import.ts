@@ -429,6 +429,31 @@ export function parseWorkbookAuto(
         }
       });
 
+      // Fallback genérico: cabeçalho do mês ilegível (ex.: acentuação corrompida em .xls).
+      // Detecta a coluna de período pelos próprios dados (JAN/2026, Jun-26, datas...).
+      if (mesCol === -1) {
+        const maxCols = Math.max(...rawRows.slice(headerRowIdx + 1).map((rr) => (Array.isArray(rr) ? rr.length : 0)), 0);
+        let bestCol = -1;
+        let bestHits = 0;
+        for (let c = 0; c < maxCols; c++) {
+          let hits = 0;
+          for (let r = headerRowIdx + 1; r < Math.min(rawRows.length, headerRowIdx + 40); r++) {
+            const rr = rawRows[r];
+            if (!Array.isArray(rr)) continue;
+            const cell = rr[c];
+            if (cell === null || cell === undefined || cell === "") continue;
+            if (parseSmartMonthAndYear(cell, defaultYear).month) hits++;
+          }
+          if (hits > bestHits) {
+            bestHits = hits;
+            bestCol = c;
+          }
+        }
+        if (bestCol >= 0 && bestHits >= 2) mesCol = bestCol;
+      }
+
+
+
       // Process data rows
       for (let r = headerRowIdx + 1; r < rawRows.length; r++) {
         const row = rawRows[r];
