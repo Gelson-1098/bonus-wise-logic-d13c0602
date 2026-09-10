@@ -77,11 +77,10 @@ export const getBenefitEntries = createServerFn({ method: "GET" })
       .eq("key", settingKey)
       .maybeSingle();
 
+    // Somente dados persistidos no banco (protegidos por RLS). Sem fallback para base local.
     let allEntries: BenefitEntry[] = [];
     if (setting?.value && Array.isArray(setting.value)) {
-      allEntries = setting.value as BenefitEntry[];
-    } else {
-      allEntries = (await loadSeedEntries()).filter((e) => e.year === year);
+      allEntries = (setting.value as BenefitEntry[]).filter((e) => e.year === year);
     }
 
     let filtered = allEntries;
