@@ -758,6 +758,17 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
+              variant="ghost"
+              size="icon"
+              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              title="Copiar comparativo do mês para WhatsApp"
+              aria-label="Copiar comparativo do mês para WhatsApp"
+              onClick={copyComparativo}
+            >
+              <MessageCircle className="size-4" />
+            </Button>
+
+            <Button
               variant="default"
               size="sm"
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm"
