@@ -645,6 +645,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
               size="sm"
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm"
               onClick={() => {
+                qc.invalidateQueries({ queryKey: ["metas-consultivo"] });
                 qc.invalidateQueries({ queryKey: ["actuals-targets"] });
                 qc.invalidateQueries({ queryKey: ["store-goals"] });
                 qc.invalidateQueries({ queryKey: ["stores-metas"] });
@@ -1889,10 +1890,12 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
       // Atualização imediata do Realizado (sem F5): invalida e refaz as consultas
       void (async () => {
         await Promise.all([
+          qc.invalidateQueries({ queryKey: ["metas-consultivo"] }),
           qc.invalidateQueries({ queryKey: ["actuals-targets"] }),
           qc.invalidateQueries({ queryKey: ["store-goals"] }),
           qc.invalidateQueries({ queryKey: ["stores-metas"] }),
         ]);
+        await qc.refetchQueries({ queryKey: ["metas-consultivo"], type: "all" });
         await qc.refetchQueries({ queryKey: ["actuals-targets"], type: "all" });
         await qc.refetchQueries({ queryKey: ["store-goals"], type: "all" });
       })();
