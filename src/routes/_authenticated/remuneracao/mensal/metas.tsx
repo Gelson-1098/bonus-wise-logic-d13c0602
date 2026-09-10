@@ -26,7 +26,7 @@ import {
   Loader2,
   AlertTriangle,
   FileSpreadsheet,
-  FileText,
+  
   History,
   Plus,
   RefreshCw,
@@ -45,7 +45,7 @@ import {
   deduplicateStores,
   getGoalGrowth,
   saveGoalGrowth,
-  syncOfficialPdfGoals,
+  
   updateStoreGoalManual,
   generateGoals,
   importRevenueHistory,
