@@ -185,16 +185,10 @@ function PositionsTab({ editable }: { editable: boolean }) {
   const [openNew, setOpenNew] = useState(false);
   const [form, setForm] = useState({ name: "", group_name: "", base_value: "" });
 
+  const loadPositions = useServerFn(listPositionsBasic);
   const positions = useQuery({
     queryKey: ["positions-all"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("positions")
-        .select("id,name,group_name,base_value,active")
-        .order("name");
-      if (error) throw new Error(error.message);
-      return data ?? [];
-    },
+    queryFn: async () => await loadPositions(),
   });
 
   const update = useMutation({
@@ -332,20 +326,23 @@ function EmployeesTab({ editable }: { editable: boolean }) {
       return data ?? [];
     },
   });
+  const loadPositions = useServerFn(listPositionsBasic);
   const positions = useQuery({
     queryKey: ["positions"],
-    queryFn: async () => {
-      const { data } = await supabase.from("positions").select("id,name,base_value").order("name");
-      return data ?? [];
-    },
+    queryFn: async () => await loadPositions(),
   });
+  const baseByPosition = useMemo(() => {
+    const map = new Map<string, number | null>();
+    for (const p of positions.data ?? []) map.set(p.id, p.base_value as number | null);
+    return map;
+  }, [positions.data]);
 
   const employees = useQuery({
     queryKey: ["employees", storeFilter],
     queryFn: async () => {
       let q = supabase
         .from("employees")
-        .select("id,full_name,registration,active,bonus_eligible,store_id,position_id,stores(name),positions(name,base_value)")
+        .select("id,full_name,registration,active,bonus_eligible,store_id,position_id,stores(name)")
         .order("full_name");
       if (storeFilter !== "todas") q = q.eq("store_id", storeFilter);
       const { data, error } = await q;
