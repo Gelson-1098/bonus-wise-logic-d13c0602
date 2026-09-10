@@ -115,8 +115,6 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
     let allEntries: BenefitEntry[] = [];
     if (setting?.value && Array.isArray(setting.value)) {
       allEntries = setting.value as BenefitEntry[];
-    } else {
-      allEntries = [...(await loadSeedEntries())];
     }
 
     const calcs = computeBenefitCalculations({
