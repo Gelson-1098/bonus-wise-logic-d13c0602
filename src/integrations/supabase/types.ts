@@ -1115,15 +1115,6 @@ export type Database = {
         Returns: boolean
       }
       is_master: { Args: never; Returns: boolean }
-      list_positions_basic: {
-        Args: never
-        Returns: {
-          active: boolean
-          group_name: string
-          id: string
-          name: string
-        }[]
-      }
       set_security_setting: {
         Args: { _by: string; _key: string; _value: string }
         Returns: undefined
