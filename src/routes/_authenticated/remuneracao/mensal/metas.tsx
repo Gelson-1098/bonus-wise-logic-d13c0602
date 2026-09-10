@@ -367,21 +367,9 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
 
   const { data: stores } = useStores();
 
-  const goalsQuery = useQuery({
-    queryKey: ["store-goals", year],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("store_goals")
-        .select(
-          "id,store_id,year,month,base_year,faturamento_base_ano_anterior,meta_faturamento,tc_ano_anterior,meta_tc,growth_fat_pct,growth_tc_pct,version,stores(name)",
-        )
-        .eq("year", year)
-        .order("month");
-      if (error) throw new Error(error.message);
-      return data ?? [];
-    },
-  });
-
+  // Leitura consultiva (todas as lojas) — mesma fonte para metas e realizado
+  const snapshot = useConsultSnapshot(year);
+  const goalsQuery = { ...snapshot, data: snapshot.data?.goals };
   const actualsQuery = useActuals(year);
 
   const actualMap = useMemo(() => {
