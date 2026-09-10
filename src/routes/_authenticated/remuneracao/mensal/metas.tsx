@@ -239,136 +239,28 @@ export function copyWhatsAppMessage(params: {
 
 /* ------------------------------------------------------------------ Hook Unificado de Faturamento Realizado */
 
+/**
+ * Leitura consultiva do módulo (metas + realizado de todas as lojas).
+ * Somente leitura, disponível para Master, Treinador e Gerente.
+ */
+function useConsultSnapshot(year: number) {
+  const read = useServerFn(readMetasConsultivo);
+  return useQuery({
+    queryKey: ["metas-consultivo", year],
+    queryFn: () => read({ data: { year: Number(year) } }),
+    staleTime: 1000 * 30,
+    refetchOnWindowFocus: true,
+  });
+}
+
 export function useActuals(year: number) {
+  const snapshot = useConsultSnapshot(year);
+  const read = useServerFn(readMetasConsultivo);
   return useQuery({
     queryKey: ["actuals-targets", year],
     queryFn: async () => {
-      const map = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
-
-      // 1. Busca oficial: bonus_periods (year) + store_targets (period_id)
-      try {
-        const { data: periods, error: pErr } = await supabase
-          .from("bonus_periods")
-          .select("id, store_id, month, year")
-          .eq("year", Number(year));
-
-        if (!pErr && periods && periods.length > 0) {
-          const periodMap = new Map<string, { store_id: string; month: number }>();
-          const periodIds: string[] = [];
-          for (const p of periods) {
-            const sid = String(p.store_id).trim();
-            const m = Number(p.month);
-            periodMap.set(p.id, { store_id: sid, month: m });
-            periodIds.push(p.id);
-          }
-
-          const { data: targets, error: tErr } = await supabase
-            .from("store_targets")
-            .select("id, period_id, revenue_actual, tc_actual")
-            .in("period_id", periodIds);
-
-          if (!tErr && targets) {
-            for (const t of targets) {
-              const bp = periodMap.get(t.period_id);
-              if (bp) {
-                const rev = t.revenue_actual != null ? Number(t.revenue_actual) : null;
-                const tc = t.tc_actual != null ? Number(t.tc_actual) : null;
-                if (rev != null || tc != null) {
-                  map.set(`${bp.store_id}-${bp.month}`, {
-                    revenue_actual: rev,
-                    tc_actual: tc,
-                  });
-                }
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("bonus_periods + store_targets query warning:", err);
-      }
-
-      // 2. Busca ampla complementar de todos os períodos para garantir correspondência
-      try {
-        const { data: allPeriods } = await supabase
-          .from("bonus_periods")
-          .select("id, store_id, month, year");
-
-        if (allPeriods && allPeriods.length > 0) {
-          const matchingPeriods = allPeriods.filter((p) => Number(p.year) === Number(year));
-          const pMap = new Map(matchingPeriods.map((p) => [p.id, p]));
-          const pIds = matchingPeriods.map((p) => p.id);
-
-          if (pIds.length > 0) {
-            const { data: allTargets } = await supabase
-              .from("store_targets")
-              .select("id, period_id, revenue_actual, tc_actual")
-              .in("period_id", pIds);
-
-            if (allTargets) {
-              for (const t of allTargets) {
-                const p = pMap.get(t.period_id);
-                if (p) {
-                  const rev = t.revenue_actual != null ? Number(t.revenue_actual) : null;
-                  const tc = t.tc_actual != null ? Number(t.tc_actual) : null;
-                  if (rev != null || tc != null) {
-                    const k = `${String(p.store_id).trim()}-${Number(p.month)}`;
-                    if (!map.has(k) || map.get(k)?.revenue_actual == null) {
-                      map.set(k, { revenue_actual: rev, tc_actual: tc });
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("allPeriods query warning:", e);
-      }
-
-      // 3. Complemento / Fallback de revenue_history para o mesmo ano
-      try {
-        const { data: revHist, error: rErr } = await supabase
-          .from("revenue_history")
-          .select("store_id, month, receita_vendas, tc, faturamento_base_meta")
-          .eq("year", Number(year));
-
-        if (!rErr && revHist) {
-          for (const rh of revHist) {
-            const rev =
-              rh.receita_vendas != null && Number(rh.receita_vendas) > 0
-                ? Number(rh.receita_vendas)
-                : rh.faturamento_base_meta != null && Number(rh.faturamento_base_meta) > 0
-                  ? Number(rh.faturamento_base_meta)
-                  : null;
-            const tc = rh.tc != null && Number(rh.tc) > 0 ? Number(rh.tc) : null;
-            if (rev != null || tc != null) {
-              const key = `${String(rh.store_id).trim()}-${Number(rh.month)}`;
-              const existing = map.get(key);
-              if (!existing || existing.revenue_actual == null) {
-                map.set(key, {
-                  revenue_actual: rev ?? existing?.revenue_actual ?? null,
-                  tc_actual: tc ?? existing?.tc_actual ?? null,
-                });
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("revenue_history query warning:", err);
-      }
-
-      return Array.from(map.entries()).map(([key, val]) => {
-        // A chave é `${uuid}-${mes}` e o uuid contém hífens: separar somente no último hífen.
-        const sep = key.lastIndexOf("-");
-        const store_id = key.slice(0, sep);
-        const month = Number(key.slice(sep + 1));
-        return {
-          store_id,
-          month,
-          revenue_actual: val.revenue_actual,
-          tc_actual: val.tc_actual,
-        };
-      });
+      const snap = snapshot.data ?? (await read({ data: { year: Number(year) } }));
+      return snap.actuals;
     },
     staleTime: 1000 * 30,
     refetchOnWindowFocus: true,
