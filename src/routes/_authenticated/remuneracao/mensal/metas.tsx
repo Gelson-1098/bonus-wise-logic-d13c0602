@@ -1,261 +1,29 @@
-import React, { useMemo, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { toast } from "sonner";
-import * as XLSX from "xlsx";
-import {
-  AlertTriangle,
-  ArrowRight,
-  Building2,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  Edit3,
-  FileSpreadsheet,
-  FileText,
-  Loader2,
-  RefreshCw,
-  Share2,
-  Upload,
-  XCircle,
-} from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import {
-  deduplicateStores,
-  generateGoals,
-  getGoalGrowth,
-  importActualRevenue,
-  importRevenueHistory,
-  saveGoalGrowth,
-  syncOfficialPdfGoals,
-  updateStoreGoalManual,
-} from "@/lib/goals.functions";
-import {
-  buildRows,
-  COLUMN_HINTS,
-  duplicateKeys,
-  guessColumn,
-  normalize,
-  parseWorkbookAuto,
-  type AutoImportedRow,
-  type AutoImportResult,
-  type ColumnMap,
-  type ParsedRow,
-} from "@/lib/goal-import";
-import { AppShell } from "@/components/app-shell";
-import { useAccess } from "@/hooks/use-auth";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { brl, MONTHS, periodLabel } from "@/lib/format";
-import { cn } from "@/lib/utils";
-
-export const Route = createFileRoute("/_authenticated/remuneracao/mensal/metas")({
-  head: () => ({
-    meta: [
-      { title: "Orçamento de Metas | PRISMA" },
-      {
-        name: "description",
-        content:
-          "Orçamento oficial de metas por loja e mês: faturamento e clientes atendidos (TC) com base no ano anterior + 10%.",
-      },
-      { property: "og:title", content: "Orçamento de Metas | PRISMA" },
-      {
-        property: "og:description",
-        content:
-          "Orçamento oficial de metas por loja e mês: faturamento e clientes atendidos (TC) com base no ano anterior + 10%.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-    ],
-  }),
-  component: MetasPage,
-});
-
-const intFmt = (v: number | null | undefined) =>
-  Number(v ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
-
-const PDF_MONTHS = [
-  { month: 6, label: "JUN", full: "Junho" },
-  { month: 7, label: "JUL", full: "Julho" },
-  { month: 8, label: "AGO", full: "Agosto" },
-  { month: 9, label: "SET", full: "Setembro" },
-  { month: 10, label: "OUT", full: "Outubro" },
-  { month: 11, label: "NOV", full: "Novembro" },
-  { month: 12, label: "DEZ", full: "Dezembro" },
-];
-
-/* ------------------------------------------------------------------ Indicador Visual de Atingimento */
-
-export function getAtingimentoStatus(pct: number | null) {
-  if (pct === null || !Number.isFinite(pct)) {
-    return {
-      label: "Não lançado",
-      shortLabel: "Não lançado",
-      icon: "⚪",
-      color: "text-muted-foreground",
-      badgeClass: "bg-muted text-muted-foreground border-border",
-      barColor: "bg-muted",
-      code: "none" as const,
-    };
-  }
-
-  if (pct >= 100) {
-    return {
-      label: "META SUPERADA",
-      shortLabel: "SUPERADA",
-      icon: "🟢",
-      color: "text-emerald-700 dark:text-emerald-400",
-      badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700",
-      barColor: "bg-emerald-500",
-      code: "superada" as const,
-    };
-  }
-
-  if (pct >= 90) {
-    return {
-      label: "ATINGIDO",
-      shortLabel: "ATINGIDO",
-      icon: "🟢",
-      color: "text-emerald-700 dark:text-emerald-400",
-      badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-700",
-      barColor: "bg-emerald-500",
-      code: "atingido" as const,
-    };
-  }
-
-  if (pct >= 85) {
-    return {
-      label: "QUASE",
-      shortLabel: "QUASE",
-      icon: "🟡",
-      color: "text-amber-700 dark:text-amber-400",
-      badgeClass: "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700",
-      barColor: "bg-amber-500",
-      code: "quase" as const,
-    };
-  }
-
-  if (pct >= 80) {
-    return {
-      label: "ABAIXO",
-      shortLabel: "ABAIXO",
-      icon: "🔴",
-      color: "text-orange-700 dark:text-orange-400",
-      badgeClass: "bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/50 dark:text-orange-300 dark:border-orange-700",
-      barColor: "bg-orange-500",
-      code: "abaixo" as const,
-    };
-  }
-
-  return {
-    label: "CRÍTICO",
-    shortLabel: "CRÍTICO",
-    icon: "🔴",
-    color: "text-rose-700 dark:text-rose-400",
-    badgeClass: "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-700",
-    barColor: "bg-rose-600",
-    code: "critico" as const,
-  };
-}
-
-function AtingimentoIndicator({ pct, compact = false }: { pct: number | null; compact?: boolean }) {
-  if (pct === null || !Number.isFinite(pct)) {
-    return <span className="text-muted-foreground text-xs italic">Não lançado</span>;
-  }
-
-  const status = getAtingimentoStatus(pct);
-  const visualPct = Math.min(Math.max(pct, 0), 100);
-
-  return (
-    <div className={cn("flex flex-col gap-1", compact ? "items-end min-w-[110px]" : "items-end min-w-[140px]")}>
-      <div className="flex items-center gap-1">
-        <Badge
-          variant="outline"
-          className={cn(
-            "font-black text-xs px-2 py-0.5 border shadow-sm flex items-center gap-1.5",
-            status.badgeClass,
-          )}
-        >
-          <span>{status.icon}</span>
-          <span>{pct.toFixed(1)}%</span>
-          <span className="opacity-90 font-bold">— {status.label}</span>
-        </Badge>
-      </div>
-
-      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden flex bg-muted/80">
-        <div
-          className={cn("h-full transition-all duration-300 rounded-full", status.barColor)}
-          style={{ width: `${visualPct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function AtingimentoStatusBadge({ pct }: { pct: number | null }) {
-  if (pct === null || !Number.isFinite(pct)) {
-    return <Badge variant="outline" className="text-muted-foreground text-[10px] font-bold">Não lançado</Badge>;
-  }
-  const status = getAtingimentoStatus(pct);
-  return (
-    <Badge className={cn("font-black text-[11px] px-2.5 py-0.5 shadow-sm flex items-center justify-center gap-1", status.badgeClass)}>
-      <span>{status.icon}</span>
-      <span>{status.label}</span>
-    </Badge>
-  );
-}
-
-/* ------------------------------------------------------------------ Compartilhamento WhatsApp */
-
-function copyWhatsAppMessage(params: {
+export function copyWhatsAppMessage(params: {
   storeName: string;
   meta: number;
   realizado: number | null;
   tc: number | null;
   pct: number | null;
+  gap?: number | null;
   monthLabel?: string;
 }) {
   const status = getAtingimentoStatus(params.pct);
   const metaStr = brl(params.meta);
   const realStr = params.realizado !== null ? brl(params.realizado) : "Não lançado";
-  const tcStr = params.tc !== null ? intFmt(params.tc) : "—";
+  const tcStr = params.tc !== null && params.tc > 0 ? intFmt(params.tc) : "—";
   const pctStr = params.pct !== null ? `${params.pct.toFixed(1)}%` : "—";
+  const gapVal = params.gap ?? (params.realizado !== null && params.meta > 0 ? params.realizado - params.meta : null);
+  const gapStr = gapVal !== null ? `${gapVal >= 0 ? "+" : ""}${brl(gapVal)}` : "—";
 
   const message = [
-    `🍕 *${params.storeName.toUpperCase()}*${params.monthLabel ? ` (${params.monthLabel})` : ""}`,
+    `📊 *META — ${params.storeName.toUpperCase()}*${params.monthLabel ? ` (${params.monthLabel})` : ""}`,
     ``,
-    `🎯 *META:* ${metaStr}`,
-    `💰 *REALIZADO:* ${realStr}`,
-    `📦 *ATENDIMENTOS:* ${tcStr}`,
-    `📊 *ATINGIMENTO:* ${pctStr}`,
-    `${status.icon} *${status.label}*`,
+    `🎯 *Meta:* ${metaStr}`,
+    `💰 *Realizado:* ${realStr}`,
+    `📈 *Atingimento:* ${pctStr}`,
+    `📊 *Variação:* ${gapStr}`,
+    `🧾 *Atendimentos:* ${tcStr}`,
+    `${status.icon} *Status:* ${status.label}`,
   ].join("\n");
 
   if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -611,6 +379,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
   const grandTotals = useMemo(() => {
     let grandOrcado = 0;
     let grandRealizado = 0;
+    let grandTc = 0;
     let grandHasRealizado = false;
 
     for (const pm of PDF_MONTHS) {
@@ -626,6 +395,9 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
           grandRealizado += Number(val);
           grandHasRealizado = true;
         }
+        if (actual?.tc_actual != null) {
+          grandTc += Number(actual.tc_actual);
+        }
       }
     }
 
@@ -636,6 +408,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
     return {
       grandOrcado,
       grandRealizado,
+      grandTc,
       grandHasRealizado,
       grandGap,
       grandPct,
@@ -688,31 +461,51 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
             </div>
           </div>
 
-          {isMaster && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-border text-xs"
-                onClick={() => dedupMutation.mutate()}
-                disabled={dedupMutation.isPending}
-              >
-                <RefreshCw className={cn("size-3.5 mr-1.5", dedupMutation.isPending && "animate-spin")} />
-                Padronizar Nomes de Lojas
-              </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm"
+              onClick={() => {
+                qc.invalidateQueries({ queryKey: ["actuals-targets"] });
+                qc.invalidateQueries({ queryKey: ["store-goals"] });
+                qc.invalidateQueries({ queryKey: ["stores-metas"] });
+                qc.refetchQueries();
+                toast.success("Sincronização concluída com sucesso!", {
+                  description: "Metas e faturamentos realizados atualizados diretamente do banco de dados.",
+                });
+              }}
+            >
+              <RefreshCw className="size-3.5 mr-1.5" />
+              🔄 SINCRONIZAR TODAS AS INFORMAÇÕES
+            </Button>
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold"
-                onClick={() => syncPdfMutation.mutate()}
-                disabled={syncPdfMutation.isPending}
-              >
-                <FileText className="size-3.5 mr-1.5 text-primary" />
-                Sincronizar Orçamento Oficial PDF
-              </Button>
-            </div>
-          )}
+            {isMaster && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-border text-xs font-medium"
+                  onClick={() => dedupMutation.mutate()}
+                  disabled={dedupMutation.isPending}
+                >
+                  <RefreshCw className={cn("size-3.5 mr-1.5", dedupMutation.isPending && "animate-spin")} />
+                  Padronizar Lojas
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold"
+                  onClick={() => syncPdfMutation.mutate()}
+                  disabled={syncPdfMutation.isPending}
+                >
+                  <FileText className="size-3.5 mr-1.5 text-primary" />
+                  Sincronizar PDF (+10%)
+                </Button>
+              </>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -721,7 +514,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
         {/* 1. FATURAMENTO ORÇADO */}
         <Card className="p-4 border-l-4 border-l-primary bg-card">
           <p className="text-xs font-semibold text-muted-foreground uppercase">
-            {metric === "faturamento" ? "Faturamento Orçado (Jun–Dez)" : "Meta TC Orçada (Jun–Dez)"}
+            {metric === "faturamento" ? "Meta Orçada Total (Jun–Dez)" : "Meta TC Orçada (Jun–Dez)"}
           </p>
           <p className="text-2xl font-black text-primary mt-1">
             {metric === "faturamento" ? brl(grandTotals.grandOrcado) : intFmt(grandTotals.grandOrcado)}
@@ -753,7 +546,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
         {/* 3. ATINGIMENTO DO GRUPO */}
         <Card className="p-4 border-l-4 border-l-sky-500 bg-card">
           <p className="text-xs font-semibold text-sky-700 dark:text-sky-400 uppercase">
-            Atingimento do Grupo (Total)
+            Atingimento do Grupo
           </p>
           <div className="mt-1 flex items-baseline gap-2">
             <p className="text-2xl font-black text-sky-700 dark:text-sky-300">
@@ -778,7 +571,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
         {/* 4. DIFERENÇA / LACUNA */}
         <Card className="p-4 border-l-4 border-l-amber-500 bg-card">
           <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase">
-            Diferença / Lacuna (Gap)
+            Diferença / Lacuna (Variação)
           </p>
           <p className={cn(
             "text-2xl font-black mt-1",
@@ -802,20 +595,20 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
         </Card>
       </div>
 
-      {/* TABELA CONSOLIDADA GERAL: LOJA x ORÇADO x REALIZADO x GAP x % ATINGIMENTO x STATUS */}
+      {/* TABELA CONSOLIDADA GERAL: LOJA x ORÇADO x REALIZADO x GAP x % ATINGIMENTO x STATUS x TC x AÇÕES */}
       <Card>
         <CardHeader className="py-3 px-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <CardTitle className="text-sm font-bold">
-                Acompanhamento Consolidado — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Atendimentos)"} {year}
+                Orçamento de Metas (Matriz) — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Atendimentos)"} {year}
               </CardTitle>
               <CardDescription className="text-xs">
-                Comparativo oficial de Orçado vs Realizado acumulado do período por loja com cruzamento automático Loja + Mês + Ano.
+                Visualização unificada oficial com cruzamento automático Loja + Mês + Ano. Clique em uma loja para ver o detalhamento mês a mês.
               </CardDescription>
             </div>
             <div className="text-xs text-muted-foreground font-medium">
-              Clique em uma linha para ver o detalhamento mês a mês
+              Clique em uma linha para detalhar
             </div>
           </div>
         </CardHeader>
@@ -824,12 +617,13 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
             <Table>
               <TableHeader className="bg-muted/50 text-xs font-bold uppercase">
                 <TableRow>
-                  <TableHead className="w-[200px]">Loja</TableHead>
-                  <TableHead className="text-right w-[150px]">Orçado ({metric === "faturamento" ? "R$" : "Qtd"})</TableHead>
-                  <TableHead className="text-right w-[150px]">Realizado ({metric === "faturamento" ? "R$" : "Qtd"})</TableHead>
-                  <TableHead className="text-right w-[130px]">Diferença (Gap)</TableHead>
-                  <TableHead className="text-right w-[170px]">% Atingimento</TableHead>
+                  <TableHead className="w-[180px]">Loja</TableHead>
+                  <TableHead className="text-right w-[140px]">Meta Orçada</TableHead>
+                  <TableHead className="text-right w-[140px]">Realizado</TableHead>
+                  <TableHead className="text-right w-[130px]">Variação</TableHead>
+                  <TableHead className="text-right w-[150px]">% Atingimento</TableHead>
                   <TableHead className="text-center w-[130px]">Status Meta</TableHead>
+                  <TableHead className="text-right w-[110px]">TC / Atend.</TableHead>
                   <TableHead className="text-center w-[170px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -878,7 +672,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                           <span>{s.name}</span>
                         </TableCell>
 
-                        {/* ORÇADO */}
+                        {/* META ORÇADA */}
                         <TableCell className="text-right font-bold text-primary">
                           {storeOrcado > 0
                             ? metric === "faturamento" ? brl(storeOrcado) : intFmt(storeOrcado)
@@ -899,7 +693,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                           )}
                         </TableCell>
 
-                        {/* GAP */}
+                        {/* VARIAÇÃO */}
                         <TableCell className="text-right font-bold">
                           {storeGap !== null ? (
                             <span className={storeGap >= 0
@@ -922,6 +716,11 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                           <AtingimentoStatusBadge pct={storePct} />
                         </TableCell>
 
+                        {/* TC / ATENDIMENTOS */}
+                        <TableCell className="text-right font-medium text-xs">
+                          {storeTc > 0 ? intFmt(storeTc) : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+
                         {/* AÇÕES (WHATSAPP + EXPANDIR) */}
                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1.5">
@@ -937,6 +736,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                                   realizado: storeHasRealizado ? storeRealizado : null,
                                   tc: storeTc > 0 ? storeTc : null,
                                   pct: storePct,
+                                  gap: storeGap,
                                   monthLabel: `Acumulado Jun–Dez/${year}`,
                                 })
                               }
@@ -951,7 +751,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                               className="h-7 text-xs font-semibold"
                               onClick={() => setExpandedStoreId(isExpanded ? null : s.id)}
                             >
-                              {isExpanded ? "Ocultar" : "Ver meses"}
+                              {isExpanded ? "Ocultar" : "Detalhar"}
                             </Button>
                           </div>
                         </TableCell>
@@ -960,7 +760,7 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                       {/* Detalhamento mês a mês */}
                       {isExpanded && (
                         <TableRow className="bg-muted/10">
-                          <TableCell colSpan={7} className="p-4">
+                          <TableCell colSpan={8} className="p-4">
                             <StoreDetailCard
                               storeId={s.id}
                               storeName={s.name}
@@ -1006,6 +806,9 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                     </TableCell>
                     <TableCell className="text-center">
                       <AtingimentoStatusBadge pct={grandTotals.grandPct} />
+                    </TableCell>
+                    <TableCell className="text-right font-extrabold text-xs">
+                      {grandTotals.grandTc > 0 ? intFmt(grandTotals.grandTc) : "—"}
                     </TableCell>
                     <TableCell />
                   </TableRow>
