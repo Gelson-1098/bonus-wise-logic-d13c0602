@@ -51,6 +51,7 @@ import {
   generateGoals,
   importRevenueHistory,
 } from "@/lib/goals.functions";
+import { readMetasConsultivo } from "@/lib/metas-read.functions";
 import { parseWorkbookAuto, normalize, type AutoImportedRow, type AutoImportResult } from "@/lib/goal-import";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import * as XLSX from "xlsx";
