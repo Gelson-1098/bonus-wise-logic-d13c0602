@@ -448,15 +448,22 @@ export function parseWorkbookAuto(
 
         const filialRaw = filialCol >= 0 ? row[filialCol] : null;
         const nomeRaw = nomeLojaCol >= 0 ? row[nomeLojaCol] : null;
-
-        const storeMatch = matchCanonicalStore(filialRaw, stores) || matchCanonicalStore(nomeRaw, stores);
-        if (!storeMatch) continue;
+        const extIdRaw = extIdCol >= 0 ? row[extIdCol] : null;
 
         const rawKey = normalize(String(filialRaw || nomeRaw || ""));
         const storeIdOverride = overrides[rawKey];
 
-        const storeId = storeIdOverride || (storeMatch.dbStore ? storeMatch.dbStore.id : null);
-        const storeName = storeMatch.canonical.name;
+        const resolution = resolveRowStore(
+          { externalId: extIdRaw, code: filialRaw, name: nomeRaw ?? filialRaw },
+          stores,
+        );
+
+        // Linha sem qualquer indício de unidade: ignora (cabeçalhos, notas, vazios)
+        if (resolution.status === "unknown" && !storeIdOverride) continue;
+
+        const storeId = storeIdOverride || (resolution.dbStore ? resolution.dbStore.id : null);
+        const storeName = resolution.canonical?.name ?? String(nomeRaw || filialRaw || "—");
+
 
         // Identify month and year
         const mesRaw = mesCol >= 0 ? row[mesCol] : null;
