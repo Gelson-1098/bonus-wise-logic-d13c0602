@@ -18,6 +18,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { brl } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/regras")({
+  beforeLoad: async () => {
+    const { data, error } = await supabase.rpc("is_master");
+    if (error || data !== true) throw redirect({ to: "/remuneracao/mensal/painel" });
+  },
   head: () => ({
     meta: [
       { title: "Motor de regras | PRISMA" },
@@ -85,16 +89,10 @@ function RegrasPage() {
     },
   });
 
+  const loadPositions = useServerFn(listPositionsBasic);
   const positions = useQuery({
     queryKey: ["positions"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("positions")
-        .select("id,name,base_value,active")
-        .order("name");
-      if (error) throw new Error(error.message);
-      return data ?? [];
-    },
+    queryFn: async () => await loadPositions(),
   });
 
   useEffect(() => {
