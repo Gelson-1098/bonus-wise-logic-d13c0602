@@ -17,12 +17,14 @@ export const listPositionsBasic = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("positions")
-      .select("id,name,base_value")
+      .select("id,name,group_name,active,base_value")
       .order("name");
     if (error) throw new Error(error.message);
     return (data ?? []).map((p) => ({
       id: p.id,
       name: p.name,
+      group_name: p.group_name,
+      active: p.active,
       base_value: isMaster === true ? p.base_value : null,
     }));
   });
