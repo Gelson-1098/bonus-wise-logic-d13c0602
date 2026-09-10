@@ -64,21 +64,25 @@ function LancamentoPage() {
   const open = useServerFn(openPeriod);
   const transition = useServerFn(transitionPeriod);
 
+  // Gerente enxerga apenas as lojas vinculadas ao próprio usuário; Master vê todas.
   const { data: stores } = useQuery({
-    queryKey: ["stores-active"],
+    queryKey: ["stores-active", access?.isMaster ?? null, access?.storeIds ?? []],
+    enabled: !!access,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("stores")
-        .select("id,name")
-        .eq("active", true)
-        .order("name");
+      let query = supabase.from("stores").select("id,name").eq("active", true).order("name");
+      if (!access?.isMaster) {
+        if (!access?.storeIds?.length) return [];
+        query = query.in("id", access.storeIds);
+      }
+      const { data, error } = await query;
       if (error) throw new Error(error.message);
       return data;
     },
   });
 
   useEffect(() => {
-    if (!storeId && stores && stores.length > 0) setStoreId(stores[0]!.id);
+    if (!stores || stores.length === 0) return;
+    if (!storeId || !stores.some((s) => s.id === storeId)) setStoreId(stores[0]!.id);
   }, [stores, storeId]);
 
   const periodQuery = useQuery({
