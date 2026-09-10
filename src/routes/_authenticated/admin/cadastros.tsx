@@ -447,7 +447,9 @@ function EmployeesTab({ editable }: { editable: boolean }) {
                     </Select>
                   </TableCell>
                   <TableCell className="text-right">
-                    {brl((e.positions as { base_value: number | null } | null)?.base_value ?? 0)}
+                    {e.position_id && baseByPosition.get(e.position_id) != null
+                      ? brl(Number(baseByPosition.get(e.position_id)))
+                      : "—"}
                   </TableCell>
                   <TableCell>
                     <Switch
