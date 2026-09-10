@@ -472,7 +472,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
 
   const displayMonths = useMemo(() => {
     if (selectedMonth === 0) return PDF_MONTHS;
-    const name = MONTHS[selectedMonth - 1];
+    const name = MONTHS[selectedMonth - 1] ?? "";
     return [{ month: selectedMonth, label: name.slice(0, 3).toUpperCase(), full: name }];
   }, [selectedMonth]);
 
