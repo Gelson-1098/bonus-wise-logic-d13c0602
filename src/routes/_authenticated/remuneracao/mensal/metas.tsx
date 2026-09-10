@@ -647,6 +647,23 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
             </div>
 
             <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Mês</Label>
+              <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
+                <SelectTrigger className="w-[150px] font-semibold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Ano completo</SelectItem>
+                  {MONTHS.map((m, i) => (
+                    <SelectItem key={m} value={String(i + 1)}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Indicador Visualizado</Label>
               <div className="flex rounded-md border p-0.5 bg-muted/30">
                 <Button
