@@ -859,7 +859,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
                   let storeTc = 0;
                   let storeHasRealizado = false;
 
-                  for (const pm of PDF_MONTHS) {
+                  for (const pm of displayMonths) {
                     const g = goalMap.get(`${s.id}-${pm.month}`);
                     if (g) {
                       storeOrcado += metric === "faturamento" ? Number(g.meta_faturamento) : Number(g.meta_tc);
