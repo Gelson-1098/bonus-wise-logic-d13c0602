@@ -468,6 +468,17 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
   const [metric, setMetric] = useState<"faturamento" | "tc">("faturamento");
   const [expandedStoreId, setExpandedStoreId] = useState<string | null>(null);
   const [editingGoal, setEditingGoal] = useState<EditGoalPayload | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState(0); // 0 = Ano completo
+
+  const displayMonths = useMemo(() => {
+    if (selectedMonth === 0) return PDF_MONTHS;
+    const name = MONTHS[selectedMonth - 1] ?? "";
+    return [{ month: selectedMonth, label: name.slice(0, 3).toUpperCase(), full: name }];
+  }, [selectedMonth]);
+
+  const periodLabelText = selectedMonth === 0
+    ? `Jun–Dez/${year}`
+    : `${MONTHS[selectedMonth - 1]}/${year}`;
 
   const { data: stores } = useStores();
 
@@ -544,8 +555,8 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
   // Totais por mês
   const monthlyTotals = useMemo(() => {
     const totals: Record<number, { baseFat: number; metaFat: number; baseTc: number; metaTc: number }> = {};
-    for (const pm of PDF_MONTHS) {
-      totals[pm.month] = { baseFat: 0, metaFat: 0, baseTc: 0, metaTc: 0 };
+    for (let m = 1; m <= 12; m++) {
+      totals[m] = { baseFat: 0, metaFat: 0, baseTc: 0, metaTc: 0 };
     }
     for (const g of goalsQuery.data ?? []) {
       if (totals[g.month]) {
@@ -559,16 +570,18 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
   }, [goalsQuery.data]);
 
   const totalPeriodMeta = useMemo(() => {
-    return (goalsQuery.data ?? []).reduce(
-      (acc, g) => ({
-        metaFat: acc.metaFat + Number(g.meta_faturamento),
-        baseFat: acc.baseFat + Number(g.faturamento_base_ano_anterior),
-        metaTc: acc.metaTc + Number(g.meta_tc),
-        baseTc: acc.baseTc + Number(g.tc_ano_anterior),
-      }),
-      { metaFat: 0, baseFat: 0, metaTc: 0, baseTc: 0 },
-    );
-  }, [goalsQuery.data]);
+    const result = { metaFat: 0, baseFat: 0, metaTc: 0, baseTc: 0 };
+    for (const dm of displayMonths) {
+      const t = monthlyTotals[dm.month];
+      if (t) {
+        result.baseFat += t.baseFat;
+        result.metaFat += t.metaFat;
+        result.baseTc += t.baseTc;
+        result.metaTc += t.metaTc;
+      }
+    }
+    return result;
+  }, [monthlyTotals, displayMonths]);
 
   // Totais Consolidados Gerais
   const grandTotals = useMemo(() => {
@@ -577,13 +590,13 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
     let grandTc = 0;
     let grandHasRealizado = false;
 
-    for (const pm of PDF_MONTHS) {
+    for (const pm of displayMonths) {
       const mTot = monthlyTotals[pm.month];
       grandOrcado += metric === "faturamento" ? mTot?.metaFat ?? 0 : mTot?.metaTc ?? 0;
     }
 
     for (const s of activeStores) {
-      for (const pm of PDF_MONTHS) {
+      for (const pm of displayMonths) {
         const actual = actualMap.get(`${s.id}-${pm.month}`);
         const val = metric === "faturamento" ? actual?.revenue_actual : actual?.tc_actual;
         if (val != null) {
@@ -609,7 +622,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
       grandPct,
       grandStatus,
     };
-  }, [monthlyTotals, activeStores, actualMap, metric]);
+  }, [monthlyTotals, activeStores, actualMap, metric, displayMonths]);
 
   return (
     <div className="space-y-5">
@@ -627,6 +640,23 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
                   {[nowYear - 1, nowYear, nowYear + 1].map((y) => (
                     <SelectItem key={y} value={String(y)}>
                       {y}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Mês</Label>
+              <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
+                <SelectTrigger className="w-[150px] font-semibold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Ano completo</SelectItem>
+                  {MONTHS.map((m, i) => (
+                    <SelectItem key={m} value={String(i + 1)}>
+                      {m}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -708,7 +738,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
         {/* 1. FATURAMENTO ORÇADO */}
         <Card className="p-4 border-l-4 border-l-primary bg-card">
           <p className="text-xs font-semibold text-muted-foreground uppercase">
-            {metric === "faturamento" ? "Meta Orçada Total (Jun–Dez)" : "Meta TC Orçada (Jun–Dez)"}
+            {metric === "faturamento" ? `Meta Orçada Total (${selectedMonth === 0 ? "Jun–Dez" : MONTHS[selectedMonth - 1]})` : `Meta TC Orçada (${selectedMonth === 0 ? "Jun–Dez" : MONTHS[selectedMonth - 1]})`}
           </p>
           <p className="text-2xl font-black text-primary mt-1">
             {metric === "faturamento" ? brl(grandTotals.grandOrcado) : intFmt(grandTotals.grandOrcado)}
@@ -784,7 +814,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
               ? grandTotals.grandGap >= 0
                 ? "Superávit em relação à meta"
                 : "Déficit em relação à meta"
-              : "7 meses (Junho a Dezembro)"}
+              : selectedMonth === 0 ? "7 meses (Junho a Dezembro)" : MONTHS[selectedMonth - 1]}
           </p>
         </Card>
       </div>
@@ -795,7 +825,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <CardTitle className="text-sm font-bold">
-                Orçamento de Metas (Matriz) — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Atendimentos)"} {year}
+                Orçamento de Metas (Matriz) — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Atendimentos)"} {year}{selectedMonth !== 0 ? ` · ${MONTHS[selectedMonth - 1]}` : ""}
               </CardTitle>
               <CardDescription className="text-xs">
                 Visualização unificada oficial com cruzamento automático Loja + Mês + Ano. Clique em uma loja para ver o detalhamento mês a mês.
@@ -829,7 +859,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
                   let storeTc = 0;
                   let storeHasRealizado = false;
 
-                  for (const pm of PDF_MONTHS) {
+                  for (const pm of displayMonths) {
                     const g = goalMap.get(`${s.id}-${pm.month}`);
                     if (g) {
                       storeOrcado += metric === "faturamento" ? Number(g.meta_faturamento) : Number(g.meta_tc);
@@ -931,7 +961,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
                                   tc: storeTc > 0 ? storeTc : null,
                                   pct: storePct,
                                   gap: storeGap,
-                                  monthLabel: `Acumulado Jun–Dez/${year}`,
+                                  monthLabel: periodLabelText,
                                 })
                               }
                             >
