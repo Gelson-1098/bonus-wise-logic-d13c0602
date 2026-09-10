@@ -391,6 +391,7 @@ function normalizeText(text: string) {
 /** Limpa e unifica lojas duplicadas, migrando os registros relacionados para a loja canônica. */
 export async function cleanupAndStandardizeStores(supabase: SupabaseLike, userId: string) {
   const { CANONICAL_STORES } = await import("@/lib/official-pdf-data");
+  const { resolveStore } = await import("@/lib/store-registry");
 
   const { data: allStores, error: stErr } = await supabase
     .from("stores")
