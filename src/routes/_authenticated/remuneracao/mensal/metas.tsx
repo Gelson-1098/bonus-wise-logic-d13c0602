@@ -555,8 +555,8 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
   // Totais por mês
   const monthlyTotals = useMemo(() => {
     const totals: Record<number, { baseFat: number; metaFat: number; baseTc: number; metaTc: number }> = {};
-    for (const pm of PDF_MONTHS) {
-      totals[pm.month] = { baseFat: 0, metaFat: 0, baseTc: 0, metaTc: 0 };
+    for (let m = 1; m <= 12; m++) {
+      totals[m] = { baseFat: 0, metaFat: 0, baseTc: 0, metaTc: 0 };
     }
     for (const g of goalsQuery.data ?? []) {
       if (totals[g.month]) {
