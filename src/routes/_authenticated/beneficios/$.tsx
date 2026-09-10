@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -52,11 +53,13 @@ import { brl, MONTHS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_BENEFIT_PARAMETERS,
-  INITIAL_BENEFIT_ENTRIES,
   type BenefitEntry,
   type BenefitParameter,
-} from "@/lib/benefits-initial-data";
-import { computeBenefitCalculations } from "@/lib/benefits.functions";
+} from "@/lib/benefits-types";
+import {
+  computeBenefitCalculations,
+  resetBenefitsToSpreadsheetBaseline,
+} from "@/lib/benefits.functions";
 
 export const Route = createFileRoute("/_authenticated/beneficios/$")({
   ssr: false,
@@ -87,6 +90,18 @@ const ALL_SYSTEM_STORES = [
   { name: "Praia do Canto", region: "ES", city: "Vitória" },
 ];
 
+function normalizeName(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function storeSettingKey(year: number, storeName: string) {
+  return `benefits_data_${year}__${normalizeName(storeName).replace(/[^a-z0-9]+/g, "_")}`;
+}
+
 export function BeneficiosPage() {
   const qc = useQueryClient();
   const { data: access } = useAccess();
@@ -108,20 +123,33 @@ export function BeneficiosPage() {
   const entriesQuery = useQuery({
     queryKey: ["benefit-entries", year],
     queryFn: async () => {
-      try {
-        const { data } = await supabase
-          .from("app_settings")
-          .select("value")
-          .eq("key", `benefits_data_${year}`)
-          .maybeSingle();
+      // Persistência por loja: cada loja grava a própria chave, evitando que um
+      // salvamento simultâneo sobrescreva os dados de outra unidade.
+      // A chave global antiga continua sendo lida como base histórica.
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("key,value")
+        .like("key", `benefits_data_${year}%`);
 
-        if (data?.value && Array.isArray(data.value)) {
-          return data.value as BenefitEntry[];
+      if (error) throw error;
+
+      const rows = data ?? [];
+      const legacy = rows.find((r) => r.key === `benefits_data_${year}`);
+      const perStore = rows.filter((r) => r.key !== `benefits_data_${year}`);
+
+      const overridden = new Set(perStore.map((r) => r.key));
+      const merged: BenefitEntry[] = [];
+
+      if (Array.isArray(legacy?.value)) {
+        for (const e of legacy!.value as BenefitEntry[]) {
+          if (!overridden.has(storeSettingKey(year, e.storeName))) merged.push(e);
         }
-      } catch (err) {
-        console.warn("Could not load from app_settings, using baseline data:", err);
       }
-      return INITIAL_BENEFIT_ENTRIES.filter((e) => e.year === year);
+      for (const row of perStore) {
+        if (Array.isArray(row.value)) merged.push(...(row.value as BenefitEntry[]));
+      }
+
+      return merged.filter((e) => e.year === year);
     },
   });
 
@@ -165,14 +193,51 @@ export function BeneficiosPage() {
     },
   });
 
-  const allEntries = entriesQuery.data ?? [];
+  const rawEntries = entriesQuery.data ?? [];
   const parameters = paramsQuery.data ?? [];
   const periodStatuses = statusesQuery.data ?? {};
 
-  // Store access
+  // Store access: gerente só enxerga as lojas vinculadas ao seu usuário.
+  const myStoresQuery = useQuery({
+    queryKey: ["my-store-names", access?.storeIds ?? []],
+    enabled: !!access && !isMaster,
+    queryFn: async () => {
+      if (!access?.storeIds?.length) return [] as string[];
+      const { data } = await supabase.from("stores").select("name").in("id", access.storeIds);
+      return (data ?? []).map((s) => s.name as string);
+    },
+  });
+
   const availableStores = useMemo(() => {
-    return ALL_SYSTEM_STORES.map((s) => s.name);
-  }, []);
+    const all = ALL_SYSTEM_STORES.map((s) => s.name);
+    if (isMaster) return all;
+    const mine = myStoresQuery.data ?? [];
+    if (!mine.length) return [];
+    return all.filter((name) =>
+      mine.some((m) => {
+        const a = normalizeName(m);
+        const b = normalizeName(name);
+        return a.includes(b) || b.includes(a);
+      }),
+    );
+  }, [isMaster, myStoresQuery.data]);
+
+  const visibleStores = useMemo(
+    () => ALL_SYSTEM_STORES.filter((s) => availableStores.includes(s.name)),
+    [availableStores],
+  );
+
+  useEffect(() => {
+    if (!availableStores.length) return;
+    if (!availableStores.includes(selectedStore)) setSelectedStore(availableStores[0]!);
+  }, [availableStores, selectedStore]);
+
+  const allEntries = useMemo(() => {
+    if (isMaster) return rawEntries;
+    return rawEntries.filter((e) =>
+      availableStores.some((n) => normalizeName(n) === normalizeName(e.storeName)),
+    );
+  }, [rawEntries, isMaster, availableStores]);
 
   // Entries filtered for current view
   const currentMonthEntries = useMemo(() => {
@@ -214,7 +279,7 @@ export function BeneficiosPage() {
   const consolidatedMatrix = useMemo(() => {
     const matrix: Record<string, { monthlyTotals: number[]; monthlyCounts: number[]; annualTotal: number; avgPerson: number }> = {};
 
-    ALL_SYSTEM_STORES.forEach((s) => {
+    visibleStores.forEach((s) => {
       matrix[s.name] = {
         monthlyTotals: Array(12).fill(0),
         monthlyCounts: Array(12).fill(0),
@@ -225,7 +290,7 @@ export function BeneficiosPage() {
 
     for (const e of allEntries) {
       const storeKey =
-        ALL_SYSTEM_STORES.find((s) => s.name.toLowerCase() === e.storeName.toLowerCase())?.name ||
+        visibleStores.find((s) => s.name.toLowerCase() === e.storeName.toLowerCase())?.name ||
         e.storeName;
 
       if (!matrix[storeKey]) {
@@ -248,7 +313,7 @@ export function BeneficiosPage() {
     }
 
     return matrix;
-  }, [allEntries]);
+  }, [allEntries, visibleStores]);
 
   // Total per month across all stores
   const grandMonthlyTotals = useMemo(() => {
@@ -268,8 +333,10 @@ export function BeneficiosPage() {
   // Mutations using client-side supabase directly
   const saveEntryMutation = useMutation({
     mutationFn: async (input: any) => {
-      const settingKey = `benefits_data_${year}`;
-      const currentList = [...allEntries];
+      const settingKey = storeSettingKey(year, input.storeName);
+      const currentList = allEntries.filter(
+        (e) => normalizeName(e.storeName) === normalizeName(input.storeName),
+      );
 
       const calcs = computeBenefitCalculations({
         diasMes: input.diasMes,
@@ -316,7 +383,7 @@ export function BeneficiosPage() {
       await supabase.from("app_settings").upsert({
         key: settingKey,
         value: currentList as any,
-        description: `Dados mensais de benefícios do ano ${year}`,
+        description: `Benefícios ${input.storeName} - ${year}`,
         updated_at: new Date().toISOString(),
       });
 
@@ -332,13 +399,17 @@ export function BeneficiosPage() {
 
   const deleteEntryMutation = useMutation({
     mutationFn: async (id: string) => {
-      const settingKey = `benefits_data_${year}`;
-      const filtered = allEntries.filter((e) => e.id !== id);
+      const target = allEntries.find((e) => e.id === id);
+      if (!target) return true;
+      const settingKey = storeSettingKey(year, target.storeName);
+      const filtered = allEntries.filter(
+        (e) => e.id !== id && normalizeName(e.storeName) === normalizeName(target.storeName),
+      );
 
       await supabase.from("app_settings").upsert({
         key: settingKey,
         value: filtered as any,
-        description: `Dados mensais de benefícios do ano ${year}`,
+        description: `Benefícios ${target.storeName} - ${year}`,
         updated_at: new Date().toISOString(),
       });
 
@@ -395,19 +466,11 @@ export function BeneficiosPage() {
     onError: (err: any) => toast.error("Erro ao salvar parâmetros", { description: err.message }),
   });
 
+  const resetBaseline = useServerFn(resetBenefitsToSpreadsheetBaseline);
   const resetMutation = useMutation({
-    mutationFn: async () => {
-      const settingKey = `benefits_data_${year}`;
-      await supabase.from("app_settings").upsert({
-        key: settingKey,
-        value: INITIAL_BENEFIT_ENTRIES as any,
-        description: `Dados de benefícios restaurados para base inicial da planilha (${year})`,
-        updated_at: new Date().toISOString(),
-      });
-      return true;
-    },
-    onSuccess: () => {
-      toast.success(`Base restaurada com sucesso: ${INITIAL_BENEFIT_ENTRIES.length} registros carregados.`);
+    mutationFn: async () => await resetBaseline({ data: { year } }),
+    onSuccess: (result) => {
+      toast.success(`Base restaurada com sucesso: ${result?.count ?? 0} registros carregados.`);
       setConfirmReset(false);
       qc.invalidateQueries();
     },
@@ -904,7 +967,7 @@ export function BeneficiosPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {ALL_SYSTEM_STORES.map((st) => {
+                      {visibleStores.map((st) => {
                         const stEntries = allEntries.filter(
                           (e) => e.month === month && e.storeName.toLowerCase() === st.name.toLowerCase()
                         );
@@ -987,7 +1050,7 @@ export function BeneficiosPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {ALL_SYSTEM_STORES.map((st) => {
+                      {visibleStores.map((st) => {
                         const data = consolidatedMatrix[st.name] ?? { monthlyTotals: Array(12).fill(0), annualTotal: 0 };
                         return (
                           <TableRow

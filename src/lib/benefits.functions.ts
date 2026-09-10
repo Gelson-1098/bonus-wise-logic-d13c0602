@@ -3,10 +3,15 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   DEFAULT_BENEFIT_PARAMETERS,
-  INITIAL_BENEFIT_ENTRIES,
   type BenefitEntry,
   type BenefitParameter,
-} from "@/lib/benefits-initial-data";
+} from "@/lib/benefits-types";
+
+/** Dados da planilha original: carregados apenas no servidor (nunca no bundle do navegador). */
+async function loadSeedEntries(): Promise<BenefitEntry[]> {
+  const mod = await import("@/lib/benefits-seed.server");
+  return mod.INITIAL_BENEFIT_ENTRIES;
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type SupabaseLike = any;
@@ -76,7 +81,7 @@ export const getBenefitEntries = createServerFn({ method: "GET" })
     if (setting?.value && Array.isArray(setting.value)) {
       allEntries = setting.value as BenefitEntry[];
     } else {
-      allEntries = INITIAL_BENEFIT_ENTRIES.filter((e) => e.year === year);
+      allEntries = (await loadSeedEntries()).filter((e) => e.year === year);
     }
 
     let filtered = allEntries;
@@ -112,7 +117,7 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
     if (setting?.value && Array.isArray(setting.value)) {
       allEntries = setting.value as BenefitEntry[];
     } else {
-      allEntries = [...INITIAL_BENEFIT_ENTRIES];
+      allEntries = [...(await loadSeedEntries())];
     }
 
     const calcs = computeBenefitCalculations({
@@ -361,10 +366,11 @@ export const resetBenefitsToSpreadsheetBaseline = createServerFn({ method: "POST
     await assertMaster(supabase);
 
     const settingKey = `benefits_data_${data.year}`;
+    const seed = await loadSeedEntries();
 
     await supabase.from("app_settings").upsert({
       key: settingKey,
-      value: INITIAL_BENEFIT_ENTRIES as any,
+      value: seed as any,
       description: `Dados de benefícios restaurados para base inicial da planilha (${data.year})`,
       updated_by: userId,
       updated_at: new Date().toISOString(),
@@ -377,5 +383,5 @@ export const resetBenefitsToSpreadsheetBaseline = createServerFn({ method: "POST
       description: `Base de benefícios do ano ${data.year} restaurada para os dados da planilha oficial`,
     });
 
-    return { ok: true, count: INITIAL_BENEFIT_ENTRIES.length };
+    return { ok: true, count: seed.length };
   });
