@@ -461,7 +461,7 @@ type EditGoalPayload = {
 
 function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; onImportActuals?: () => void }) {
   const qc = useQueryClient();
-  const syncPdf = useServerFn(syncOfficialPdfGoals);
+  
   const dedupStoresFn = useServerFn(deduplicateStores);
   const nowYear = new Date().getFullYear();
   const [year, setYear] = useState(2026);
@@ -510,16 +510,6 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
     onError: (e: Error) => toast.error("Falha ao padronizar lojas", { description: e.message }),
   });
 
-  const syncPdfMutation = useMutation({
-    mutationFn: async () => syncPdf({}),
-    onSuccess: (res) => {
-      toast.success("Orçamento oficial carregado!", {
-        description: `${res.storesCount} lojas sincronizadas e ${res.goalsGenerated} metas geradas para ${year} com base no PDF oficial (+10%).`,
-      });
-      qc.invalidateQueries();
-    },
-    onError: (e: Error) => toast.error("Falha ao sincronizar", { description: e.message }),
-  });
 
   // Mapeamento: chave = "storeId-month" -> Goal
   const goalMap = useMemo(() => {
