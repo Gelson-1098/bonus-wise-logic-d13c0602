@@ -459,7 +459,7 @@ type EditGoalPayload = {
   metaTc: number;
 };
 
-function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
+function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; onImportActuals?: () => void }) {
   const qc = useQueryClient();
   const syncPdf = useServerFn(syncOfficialPdfGoals);
   const dedupStoresFn = useServerFn(deduplicateStores);
@@ -1585,14 +1585,14 @@ type EnhancedReviewRow = AutoImportedRow & {
   pctAting: number | null;
 };
 
-function ImportWizard() {
+function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado" | "meta" }) {
   const qc = useQueryClient();
   const nowYear = new Date().getFullYear();
   const fileRef = useRef<HTMLInputElement>(null);
   const importFn = useServerFn(importRevenueHistory);
   const { data: stores } = useStores();
 
-  const [importMode, setImportMode] = useState<"realizado" | "meta">("realizado");
+  const [importMode, setImportMode] = useState<"realizado" | "meta">(initialMode);
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
   const [baseYear, setBaseYear] = useState(nowYear);
