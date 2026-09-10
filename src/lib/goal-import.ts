@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { MONTHS } from "@/lib/format";
 import { CANONICAL_STORES, type CanonicalStore } from "@/lib/official-pdf-data";
+import { resolveStore, findDbStore, type ResolutionStatus } from "@/lib/store-registry";
 
 export type ColumnMap = {
   store: string;
