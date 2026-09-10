@@ -825,7 +825,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <CardTitle className="text-sm font-bold">
-                Orçamento de Metas (Matriz) — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Atendimentos)"} {year}
+                Orçamento de Metas (Matriz) — {metric === "faturamento" ? "Faturamento (R$)" : "TC (Atendimentos)"} {year}{selectedMonth !== 0 ? ` · ${MONTHS[selectedMonth - 1]}` : ""}
               </CardTitle>
               <CardDescription className="text-xs">
                 Visualização unificada oficial com cruzamento automático Loja + Mês + Ano. Clique em uma loja para ver o detalhamento mês a mês.
