@@ -357,10 +357,13 @@ export function useActuals(year: number) {
       }
 
       return Array.from(map.entries()).map(([key, val]) => {
-        const [store_id, month] = key.split("-");
+        // A chave é `${uuid}-${mes}` e o uuid contém hífens: separar somente no último hífen.
+        const sep = key.lastIndexOf("-");
+        const store_id = key.slice(0, sep);
+        const month = Number(key.slice(sep + 1));
         return {
           store_id,
-          month: Number(month),
+          month,
           revenue_actual: val.revenue_actual,
           tc_actual: val.tc_actual,
         };
