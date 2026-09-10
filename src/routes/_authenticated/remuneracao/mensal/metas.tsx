@@ -395,18 +395,27 @@ function MetasPage() {
 /* ------------------------------------------------------------------ Master View */
 
 function MasterMetas() {
+  const [tab, setTab] = useState("orcamento");
+  const [wizardMode, setWizardMode] = useState<"realizado" | "meta">("realizado");
+
   return (
-    <Tabs defaultValue="orcamento" className="space-y-4">
+    <Tabs value={tab} onValueChange={setTab} className="space-y-4">
       <TabsList>
         <TabsTrigger value="orcamento">Orçamento de Metas (Matriz)</TabsTrigger>
         <TabsTrigger value="importar">Importar Planilha</TabsTrigger>
         <TabsTrigger value="config">Parâmetros de Crescimento</TabsTrigger>
       </TabsList>
       <TabsContent value="orcamento">
-        <BudgetMatrixView isMaster={true} />
+        <BudgetMatrixView
+          isMaster={true}
+          onImportActuals={() => {
+            setWizardMode("realizado");
+            setTab("importar");
+          }}
+        />
       </TabsContent>
       <TabsContent value="importar">
-        <ImportWizard />
+        <ImportWizard key={wizardMode} initialMode={wizardMode} />
       </TabsContent>
       <TabsContent value="config">
         <GrowthSettings />
