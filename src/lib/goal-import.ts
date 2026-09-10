@@ -480,8 +480,19 @@ export function parseWorkbookAuto(
         const tc = tcCol >= 0 ? parseSmartNumber(row[tcCol]) : null;
 
         const errors: string[] = [];
-        if (!storeId) {
-          errors.push("Loja não cadastrada no banco de dados");
+        let statusText = "✓ OK";
+
+        if (resolution.status === "ambiguous") {
+          errors.push(resolution.reason);
+          statusText = "⚠️ AMBÍGUO — não será salvo";
+          unmappedStores.add(storeName);
+        } else if (resolution.status === "divergent") {
+          errors.push(resolution.reason);
+          statusText = "⛔ DIVERGÊNCIA — não será salvo";
+          unmappedStores.add(storeName);
+        } else if (!storeId) {
+          errors.push("Unidade oficial sem cadastro correspondente no banco de dados");
+          statusText = "⚠️ Loja não cadastrada";
           unmappedStores.add(storeName);
         } else {
           detectedStores.add(storeName);
@@ -489,19 +500,20 @@ export function parseWorkbookAuto(
 
         if (realFat === null && orcadoFat === null && baseFat === null) {
           errors.push("Faturamento ausente");
+          if (statusText === "✓ OK") statusText = "⚠️ Faturamento ausente";
         }
 
         const isValid = errors.length === 0;
 
         allRows.push({
-          id: `imp-${storeMatch.canonical.key}-${year}-${month}-${r}`,
+          id: `imp-${resolution.canonical?.key ?? rawKey || "na"}-${year}-${month}-${r}`,
           sourceSheet: sheetName,
           rowNumber: r + 1,
           rawStore: String(filialRaw || nomeRaw || storeName),
           storeName,
           storeId,
-          canonicalKey: storeMatch.canonical.key,
-          code: storeMatch.canonical.code,
+          canonicalKey: resolution.canonical?.key ?? null,
+          code: resolution.canonical?.code ?? null,
           month,
           year,
           faturamentoRealizado: realFat,
@@ -509,8 +521,10 @@ export function parseWorkbookAuto(
           faturamentoBaseAnoAnterior: baseFat,
           tc: tc ? Math.round(tc) : null,
           isValid,
-          statusText: isValid ? "✓ OK" : "⚠️ Loja não identificada",
+          statusText,
           errors,
+          resolutionStatus: resolution.status,
+          resolutionReason: resolution.reason,
         });
       }
     }
