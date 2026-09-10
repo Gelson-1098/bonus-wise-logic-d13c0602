@@ -624,6 +624,75 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
     };
   }, [monthlyTotals, activeStores, actualMap, metric, displayMonths]);
 
+  // Resumo por loja (mesmas fórmulas exibidas na matriz) — usado no comparativo do WhatsApp
+  const storeSummaries = useMemo(() => {
+    return activeStores.map((s) => {
+      let orcado = 0;
+      let realizado = 0;
+      let hasRealizado = false;
+      for (const pm of displayMonths) {
+        const g = goalMap.get(`${s.id}-${pm.month}`);
+        if (g) orcado += metric === "faturamento" ? Number(g.meta_faturamento) : Number(g.meta_tc);
+        const actual = actualMap.get(`${s.id}-${pm.month}`);
+        const val = metric === "faturamento" ? actual?.revenue_actual : actual?.tc_actual;
+        if (val != null) {
+          realizado += Number(val);
+          hasRealizado = true;
+        }
+      }
+      const pct = hasRealizado && orcado > 0 ? (realizado / orcado) * 100 : null;
+      return { id: s.id, name: s.name, orcado, realizado, hasRealizado, pct };
+    });
+  }, [activeStores, displayMonths, goalMap, actualMap, metric]);
+
+  function copyComparativo() {
+    const fmt = (v: number) => (metric === "faturamento" ? brl(v) : intFmt(v));
+    const header =
+      selectedMonth === 0
+        ? `📊 COMPARATIVO DE METAS — ${year}`
+        : `📊 COMPARATIVO DE METAS — ${(MONTHS[selectedMonth - 1] ?? "").toUpperCase()}/${year}`;
+
+    const blocks = storeSummaries
+      .filter((s) => s.orcado > 0 || s.hasRealizado)
+      .map((s) =>
+        [
+          `🏪 ${s.name}`,
+          `🎯 Orçado: ${s.orcado > 0 ? fmt(s.orcado) : "—"}`,
+          `💰 Realizado: ${s.hasRealizado ? fmt(s.realizado) : "Não lançado"}`,
+          `📈 Atingimento: ${s.pct !== null ? `${s.pct.toFixed(1)}%` : "—"}`,
+        ].join("\n"),
+      );
+
+    if (!blocks.length) {
+      toast.info("Nada para comparar", {
+        description: "Não há metas nem faturamento realizado no período selecionado.",
+      });
+      return;
+    }
+
+    const totalLine = [
+      "📌 TOTAL GERAL",
+      `🎯 Orçado: ${grandTotals.grandOrcado > 0 ? fmt(grandTotals.grandOrcado) : "—"}`,
+      `💰 Realizado: ${grandTotals.grandHasRealizado ? fmt(grandTotals.grandRealizado) : "Não lançado"}`,
+      `📈 Atingimento: ${grandTotals.grandPct !== null ? `${grandTotals.grandPct.toFixed(1)}%` : "—"}`,
+    ].join("\n");
+
+    const message = [header, "", ...blocks, totalLine].join("\n\n");
+
+    const done = () =>
+      toast.success("Comparativo copiado!", {
+        description: "Cole no WhatsApp para enviar.",
+      });
+
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(message).then(done).catch(() => {
+        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`, "_blank");
+      });
+    } else {
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`, "_blank");
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Barra de Ações e Filtros */}
