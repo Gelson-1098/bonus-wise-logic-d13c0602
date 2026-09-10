@@ -222,13 +222,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "bonus_criteria_position_id_fkey"
-            columns: ["position_id"]
-            isOneToOne: false
-            referencedRelation: "positions_public"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "bonus_criteria_version_id_fkey"
             columns: ["version_id"]
             isOneToOne: false
@@ -507,13 +500,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "employee_period_entries_position_id_fkey"
-            columns: ["position_id"]
-            isOneToOne: false
-            referencedRelation: "positions_public"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "employee_period_entries_store_id_fkey"
             columns: ["store_id"]
             isOneToOne: false
@@ -583,13 +569,6 @@ export type Database = {
             columns: ["position_id"]
             isOneToOne: false
             referencedRelation: "positions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "employees_position_id_fkey"
-            columns: ["position_id"]
-            isOneToOne: false
-            referencedRelation: "positions_public"
             referencedColumns: ["id"]
           },
           {
@@ -1122,27 +1101,7 @@ export type Database = {
       }
     }
     Views: {
-      positions_public: {
-        Row: {
-          active: boolean | null
-          group_name: string | null
-          id: string | null
-          name: string | null
-        }
-        Insert: {
-          active?: boolean | null
-          group_name?: string | null
-          id?: string | null
-          name?: string | null
-        }
-        Update: {
-          active?: boolean | null
-          group_name?: string | null
-          id?: string | null
-          name?: string | null
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Functions: {
       can_access_store: { Args: { _store_id: string }; Returns: boolean }
@@ -1156,6 +1115,15 @@ export type Database = {
         Returns: boolean
       }
       is_master: { Args: never; Returns: boolean }
+      list_positions_basic: {
+        Args: never
+        Returns: {
+          active: boolean
+          group_name: string
+          id: string
+          name: string
+        }[]
+      }
       set_security_setting: {
         Args: { _by: string; _key: string; _value: string }
         Returns: undefined
