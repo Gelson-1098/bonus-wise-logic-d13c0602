@@ -28,6 +28,7 @@ import {
   FileSpreadsheet,
   
   History,
+  MessageCircle,
   Plus,
   RefreshCw,
   Share2,
@@ -50,6 +51,7 @@ import {
   generateGoals,
   importRevenueHistory,
 } from "@/lib/goals.functions";
+import { readMetasConsultivo } from "@/lib/metas-read.functions";
 import { parseWorkbookAuto, normalize, type AutoImportedRow, type AutoImportResult } from "@/lib/goal-import";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import * as XLSX from "xlsx";
@@ -238,140 +240,23 @@ export function copyWhatsAppMessage(params: {
 
 /* ------------------------------------------------------------------ Hook Unificado de Faturamento Realizado */
 
-export function useActuals(year: number) {
+/**
+ * Leitura consultiva do módulo (metas + realizado de todas as lojas).
+ * Somente leitura, disponível para Master, Treinador e Gerente.
+ */
+function useConsultSnapshot(year: number) {
+  const read = useServerFn(readMetasConsultivo);
   return useQuery({
-    queryKey: ["actuals-targets", year],
-    queryFn: async () => {
-      const map = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
-
-      // 1. Busca oficial: bonus_periods (year) + store_targets (period_id)
-      try {
-        const { data: periods, error: pErr } = await supabase
-          .from("bonus_periods")
-          .select("id, store_id, month, year")
-          .eq("year", Number(year));
-
-        if (!pErr && periods && periods.length > 0) {
-          const periodMap = new Map<string, { store_id: string; month: number }>();
-          const periodIds: string[] = [];
-          for (const p of periods) {
-            const sid = String(p.store_id).trim();
-            const m = Number(p.month);
-            periodMap.set(p.id, { store_id: sid, month: m });
-            periodIds.push(p.id);
-          }
-
-          const { data: targets, error: tErr } = await supabase
-            .from("store_targets")
-            .select("id, period_id, revenue_actual, tc_actual")
-            .in("period_id", periodIds);
-
-          if (!tErr && targets) {
-            for (const t of targets) {
-              const bp = periodMap.get(t.period_id);
-              if (bp) {
-                const rev = t.revenue_actual != null ? Number(t.revenue_actual) : null;
-                const tc = t.tc_actual != null ? Number(t.tc_actual) : null;
-                if (rev != null || tc != null) {
-                  map.set(`${bp.store_id}-${bp.month}`, {
-                    revenue_actual: rev,
-                    tc_actual: tc,
-                  });
-                }
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("bonus_periods + store_targets query warning:", err);
-      }
-
-      // 2. Busca ampla complementar de todos os períodos para garantir correspondência
-      try {
-        const { data: allPeriods } = await supabase
-          .from("bonus_periods")
-          .select("id, store_id, month, year");
-
-        if (allPeriods && allPeriods.length > 0) {
-          const matchingPeriods = allPeriods.filter((p) => Number(p.year) === Number(year));
-          const pMap = new Map(matchingPeriods.map((p) => [p.id, p]));
-          const pIds = matchingPeriods.map((p) => p.id);
-
-          if (pIds.length > 0) {
-            const { data: allTargets } = await supabase
-              .from("store_targets")
-              .select("id, period_id, revenue_actual, tc_actual")
-              .in("period_id", pIds);
-
-            if (allTargets) {
-              for (const t of allTargets) {
-                const p = pMap.get(t.period_id);
-                if (p) {
-                  const rev = t.revenue_actual != null ? Number(t.revenue_actual) : null;
-                  const tc = t.tc_actual != null ? Number(t.tc_actual) : null;
-                  if (rev != null || tc != null) {
-                    const k = `${String(p.store_id).trim()}-${Number(p.month)}`;
-                    if (!map.has(k) || map.get(k)?.revenue_actual == null) {
-                      map.set(k, { revenue_actual: rev, tc_actual: tc });
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("allPeriods query warning:", e);
-      }
-
-      // 3. Complemento / Fallback de revenue_history para o mesmo ano
-      try {
-        const { data: revHist, error: rErr } = await supabase
-          .from("revenue_history")
-          .select("store_id, month, receita_vendas, tc, faturamento_base_meta")
-          .eq("year", Number(year));
-
-        if (!rErr && revHist) {
-          for (const rh of revHist) {
-            const rev =
-              rh.receita_vendas != null && Number(rh.receita_vendas) > 0
-                ? Number(rh.receita_vendas)
-                : rh.faturamento_base_meta != null && Number(rh.faturamento_base_meta) > 0
-                  ? Number(rh.faturamento_base_meta)
-                  : null;
-            const tc = rh.tc != null && Number(rh.tc) > 0 ? Number(rh.tc) : null;
-            if (rev != null || tc != null) {
-              const key = `${String(rh.store_id).trim()}-${Number(rh.month)}`;
-              const existing = map.get(key);
-              if (!existing || existing.revenue_actual == null) {
-                map.set(key, {
-                  revenue_actual: rev ?? existing?.revenue_actual ?? null,
-                  tc_actual: tc ?? existing?.tc_actual ?? null,
-                });
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("revenue_history query warning:", err);
-      }
-
-      return Array.from(map.entries()).map(([key, val]) => {
-        // A chave é `${uuid}-${mes}` e o uuid contém hífens: separar somente no último hífen.
-        const sep = key.lastIndexOf("-");
-        const store_id = key.slice(0, sep);
-        const month = Number(key.slice(sep + 1));
-        return {
-          store_id,
-          month,
-          revenue_actual: val.revenue_actual,
-          tc_actual: val.tc_actual,
-        };
-      });
-    },
+    queryKey: ["metas-consultivo", year],
+    queryFn: () => read({ data: { year: Number(year) } }),
     staleTime: 1000 * 30,
     refetchOnWindowFocus: true,
   });
+}
+
+export function useActuals(year: number) {
+  const snapshot = useConsultSnapshot(year);
+  return { ...snapshot, data: snapshot.data?.actuals };
 }
 
 function MetasPage() {
@@ -482,21 +367,9 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
 
   const { data: stores } = useStores();
 
-  const goalsQuery = useQuery({
-    queryKey: ["store-goals", year],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("store_goals")
-        .select(
-          "id,store_id,year,month,base_year,faturamento_base_ano_anterior,meta_faturamento,tc_ano_anterior,meta_tc,growth_fat_pct,growth_tc_pct,version,stores(name)",
-        )
-        .eq("year", year)
-        .order("month");
-      if (error) throw new Error(error.message);
-      return data ?? [];
-    },
-  });
-
+  // Leitura consultiva (todas as lojas) — mesma fonte para metas e realizado
+  const snapshot = useConsultSnapshot(year);
+  const goalsQuery = { ...snapshot, data: snapshot.data?.goals };
   const actualsQuery = useActuals(year);
 
   const actualMap = useMemo(() => {
@@ -624,6 +497,78 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
     };
   }, [monthlyTotals, activeStores, actualMap, metric, displayMonths]);
 
+  // Resumo por loja (mesmas fórmulas exibidas na matriz) — usado no comparativo do WhatsApp
+  const storeSummaries = useMemo(() => {
+    return activeStores.map((s) => {
+      let orcado = 0;
+      let realizado = 0;
+      let hasRealizado = false;
+      for (const pm of displayMonths) {
+        const g = goalMap.get(`${s.id}-${pm.month}`);
+        if (g) orcado += metric === "faturamento" ? Number(g.meta_faturamento) : Number(g.meta_tc);
+        const actual = actualMap.get(`${s.id}-${pm.month}`);
+        const val = metric === "faturamento" ? actual?.revenue_actual : actual?.tc_actual;
+        if (val != null) {
+          realizado += Number(val);
+          hasRealizado = true;
+        }
+      }
+      const pct = hasRealizado && orcado > 0 ? (realizado / orcado) * 100 : null;
+      return { id: s.id, name: s.name, orcado, realizado, hasRealizado, pct };
+    });
+  }, [activeStores, displayMonths, goalMap, actualMap, metric]);
+
+  function copyComparativo() {
+    const fmt = (v: number) => (metric === "faturamento" ? brl(v) : intFmt(v));
+    const header =
+      selectedMonth === 0
+        ? `📊 COMPARATIVO DE METAS — ${year}`
+        : `📊 COMPARATIVO DE METAS — ${(MONTHS[selectedMonth - 1] ?? "").toUpperCase()}/${year}`;
+
+    const blocks = storeSummaries
+      .filter((s) => s.orcado > 0 || s.hasRealizado)
+      .map((s) =>
+        [
+          `🏪 ${s.name}`,
+          `🎯 Orçado: ${s.orcado > 0 ? fmt(s.orcado) : "—"}`,
+          `💰 Realizado: ${s.hasRealizado ? fmt(s.realizado) : "Não lançado"}`,
+          `📈 Atingimento: ${s.pct !== null ? `${s.pct.toFixed(1)}%` : "—"}`,
+        ].join("\n"),
+      );
+
+    if (!blocks.length) {
+      toast.info("Nada para comparar", {
+        description: "Não há metas nem faturamento realizado no período selecionado.",
+      });
+      return;
+    }
+
+    const totalLine = [
+      "📌 TOTAL GERAL",
+      `🎯 Orçado: ${grandTotals.grandOrcado > 0 ? fmt(grandTotals.grandOrcado) : "—"}`,
+      `💰 Realizado: ${grandTotals.grandHasRealizado ? fmt(grandTotals.grandRealizado) : "Não lançado"}`,
+      `📈 Atingimento: ${grandTotals.grandPct !== null ? `${grandTotals.grandPct.toFixed(1)}%` : "—"}`,
+    ].join("\n");
+
+    const message = [header, "", ...blocks, totalLine].join("\n\n");
+
+    const done = () =>
+      toast.success("Comparativo copiado!", {
+        description: "Cole no WhatsApp para enviar.",
+      });
+
+    const fail = () =>
+      toast.error("Não foi possível copiar", {
+        description: "Copie o comparativo manualmente na tabela.",
+      });
+
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(message).then(done).catch(fail);
+    } else {
+      fail();
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Barra de Ações e Filtros */}
@@ -688,10 +633,22 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
+              variant="ghost"
+              size="icon"
+              className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              title="Copiar comparativo do mês para WhatsApp"
+              aria-label="Copiar comparativo do mês para WhatsApp"
+              onClick={copyComparativo}
+            >
+              <MessageCircle className="size-4" />
+            </Button>
+
+            <Button
               variant="default"
               size="sm"
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm"
               onClick={() => {
+                qc.invalidateQueries({ queryKey: ["metas-consultivo"] });
                 qc.invalidateQueries({ queryKey: ["actuals-targets"] });
                 qc.invalidateQueries({ queryKey: ["store-goals"] });
                 qc.invalidateQueries({ queryKey: ["stores-metas"] });
@@ -1936,10 +1893,12 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
       // Atualização imediata do Realizado (sem F5): invalida e refaz as consultas
       void (async () => {
         await Promise.all([
+          qc.invalidateQueries({ queryKey: ["metas-consultivo"] }),
           qc.invalidateQueries({ queryKey: ["actuals-targets"] }),
           qc.invalidateQueries({ queryKey: ["store-goals"] }),
           qc.invalidateQueries({ queryKey: ["stores-metas"] }),
         ]);
+        await qc.refetchQueries({ queryKey: ["metas-consultivo"], type: "all" });
         await qc.refetchQueries({ queryKey: ["actuals-targets"], type: "all" });
         await qc.refetchQueries({ queryKey: ["store-goals"], type: "all" });
       })();

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, isRedirect, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useForm } from "react-hook-form";
@@ -72,9 +72,26 @@ import {
 
 export const Route = createFileRoute("/_authenticated/admin/usuarios")({
   beforeLoad: async () => {
-    const { data, error } = await supabase.rpc("is_master");
-    if (error || data !== true) throw redirect({ to: "/remuneracao/mensal/painel" });
+    try {
+      const { data, error } = await supabase.rpc("is_master");
+      if (error || data !== true) throw redirect({ to: "/remuneracao/mensal/painel" });
+    } catch (err) {
+      if (isRedirect(err)) throw err;
+      throw redirect({ to: "/remuneracao/mensal/painel" });
+    }
   },
+  errorComponent: () => (
+    <AppShell title="Usuários" description="Gerencie acessos, perfis e lojas vinculadas.">
+      <Card className="border-destructive/40">
+        <CardContent className="space-y-3 py-8 text-center text-sm">
+          <p className="text-destructive">Não foi possível carregar a Central de Usuários.</p>
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            <RefreshCw className="size-4" /> Tentar novamente
+          </Button>
+        </CardContent>
+      </Card>
+    </AppShell>
+  ),
   head: () => ({
     meta: [
       { title: "Usuários | PRISMA" },
@@ -326,7 +343,7 @@ function UsuariosPage() {
           />
         </div>
 
-        {!passwordStatus.data?.configured && (
+        {passwordStatus.isSuccess && !passwordStatus.data?.configured && (
           <Card className="border-destructive/40">
             <CardContent className="flex flex-wrap items-center gap-3 py-4 text-sm">
               <KeyRound className="size-4 text-destructive" />
