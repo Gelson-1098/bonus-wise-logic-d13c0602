@@ -590,13 +590,13 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
     let grandTc = 0;
     let grandHasRealizado = false;
 
-    for (const pm of PDF_MONTHS) {
+    for (const pm of displayMonths) {
       const mTot = monthlyTotals[pm.month];
       grandOrcado += metric === "faturamento" ? mTot?.metaFat ?? 0 : mTot?.metaTc ?? 0;
     }
 
     for (const s of activeStores) {
-      for (const pm of PDF_MONTHS) {
+      for (const pm of displayMonths) {
         const actual = actualMap.get(`${s.id}-${pm.month}`);
         const val = metric === "faturamento" ? actual?.revenue_actual : actual?.tc_actual;
         if (val != null) {
@@ -622,7 +622,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
       grandPct,
       grandStatus,
     };
-  }, [monthlyTotals, activeStores, actualMap, metric]);
+  }, [monthlyTotals, activeStores, actualMap, metric, displayMonths]);
 
   return (
     <div className="space-y-5">
