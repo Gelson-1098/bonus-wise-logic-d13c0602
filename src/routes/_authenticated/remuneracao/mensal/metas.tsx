@@ -26,7 +26,7 @@ import {
   Loader2,
   AlertTriangle,
   FileSpreadsheet,
-  FileText,
+  
   History,
   Plus,
   RefreshCw,
@@ -45,7 +45,7 @@ import {
   deduplicateStores,
   getGoalGrowth,
   saveGoalGrowth,
-  syncOfficialPdfGoals,
+  
   updateStoreGoalManual,
   generateGoals,
   importRevenueHistory,
@@ -357,10 +357,13 @@ export function useActuals(year: number) {
       }
 
       return Array.from(map.entries()).map(([key, val]) => {
-        const [store_id, month] = key.split("-");
+        // A chave é `${uuid}-${mes}` e o uuid contém hífens: separar somente no último hífen.
+        const sep = key.lastIndexOf("-");
+        const store_id = key.slice(0, sep);
+        const month = Number(key.slice(sep + 1));
         return {
           store_id,
-          month: Number(month),
+          month,
           revenue_actual: val.revenue_actual,
           tc_actual: val.tc_actual,
         };
@@ -392,18 +395,27 @@ function MetasPage() {
 /* ------------------------------------------------------------------ Master View */
 
 function MasterMetas() {
+  const [tab, setTab] = useState("orcamento");
+  const [wizardMode, setWizardMode] = useState<"realizado" | "meta">("realizado");
+
   return (
-    <Tabs defaultValue="orcamento" className="space-y-4">
+    <Tabs value={tab} onValueChange={setTab} className="space-y-4">
       <TabsList>
         <TabsTrigger value="orcamento">Orçamento de Metas (Matriz)</TabsTrigger>
         <TabsTrigger value="importar">Importar Planilha</TabsTrigger>
         <TabsTrigger value="config">Parâmetros de Crescimento</TabsTrigger>
       </TabsList>
       <TabsContent value="orcamento">
-        <BudgetMatrixView isMaster={true} />
+        <BudgetMatrixView
+          isMaster={true}
+          onImportActuals={() => {
+            setWizardMode("realizado");
+            setTab("importar");
+          }}
+        />
       </TabsContent>
       <TabsContent value="importar">
-        <ImportWizard />
+        <ImportWizard key={wizardMode} initialMode={wizardMode} />
       </TabsContent>
       <TabsContent value="config">
         <GrowthSettings />
@@ -447,9 +459,9 @@ type EditGoalPayload = {
   metaTc: number;
 };
 
-function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
+function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; onImportActuals?: () => void }) {
   const qc = useQueryClient();
-  const syncPdf = useServerFn(syncOfficialPdfGoals);
+  
   const dedupStoresFn = useServerFn(deduplicateStores);
   const nowYear = new Date().getFullYear();
   const [year, setYear] = useState(2026);
@@ -498,16 +510,6 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
     onError: (e: Error) => toast.error("Falha ao padronizar lojas", { description: e.message }),
   });
 
-  const syncPdfMutation = useMutation({
-    mutationFn: async () => syncPdf({}),
-    onSuccess: (res) => {
-      toast.success("Orçamento oficial carregado!", {
-        description: `${res.storesCount} lojas sincronizadas e ${res.goalsGenerated} metas geradas para ${year} com base no PDF oficial (+10%).`,
-      });
-      qc.invalidateQueries();
-    },
-    onError: (e: Error) => toast.error("Falha ao sincronizar", { description: e.message }),
-  });
 
   // Mapeamento: chave = "storeId-month" -> Goal
   const goalMap = useMemo(() => {
@@ -690,11 +692,10 @@ function BudgetMatrixView({ isMaster }: { isMaster: boolean }) {
                   variant="outline"
                   size="sm"
                   className="border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary text-xs font-semibold"
-                  onClick={() => syncPdfMutation.mutate()}
-                  disabled={syncPdfMutation.isPending}
+                  onClick={() => onImportActuals?.()}
                 >
-                  <FileText className="size-3.5 mr-1.5 text-primary" />
-                  Sincronizar PDF (+10%)
+                  <Upload className="size-3.5 mr-1.5 text-primary" />
+                  📥 Importar Faturamento Realizado
                 </Button>
               </>
             )}
@@ -1573,14 +1574,14 @@ type EnhancedReviewRow = AutoImportedRow & {
   pctAting: number | null;
 };
 
-function ImportWizard() {
+function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado" | "meta" }) {
   const qc = useQueryClient();
   const nowYear = new Date().getFullYear();
   const fileRef = useRef<HTMLInputElement>(null);
   const importFn = useServerFn(importRevenueHistory);
   const { data: stores } = useStores();
 
-  const [importMode, setImportMode] = useState<"realizado" | "meta">("realizado");
+  const [importMode, setImportMode] = useState<"realizado" | "meta">(initialMode);
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState("");
   const [baseYear, setBaseYear] = useState(nowYear);
