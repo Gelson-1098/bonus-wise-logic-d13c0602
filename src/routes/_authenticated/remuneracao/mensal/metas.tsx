@@ -1925,7 +1925,17 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
       setStep("upload");
       setWorkbook(null);
       setFileName("");
-      qc.invalidateQueries();
+
+      // Atualização imediata do Realizado (sem F5): invalida e refaz as consultas
+      void (async () => {
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ["actuals-targets"] }),
+          qc.invalidateQueries({ queryKey: ["store-goals"] }),
+          qc.invalidateQueries({ queryKey: ["stores-metas"] }),
+        ]);
+        await qc.refetchQueries({ queryKey: ["actuals-targets"], type: "all" });
+        await qc.refetchQueries({ queryKey: ["store-goals"], type: "all" });
+      })();
     },
     onError: (e: Error) => toast.error("Falha ao salvar importação", { description: e.message }),
   });
