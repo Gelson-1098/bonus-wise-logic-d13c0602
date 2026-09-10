@@ -570,16 +570,18 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
   }, [goalsQuery.data]);
 
   const totalPeriodMeta = useMemo(() => {
-    return (goalsQuery.data ?? []).reduce(
-      (acc, g) => ({
-        metaFat: acc.metaFat + Number(g.meta_faturamento),
-        baseFat: acc.baseFat + Number(g.faturamento_base_ano_anterior),
-        metaTc: acc.metaTc + Number(g.meta_tc),
-        baseTc: acc.baseTc + Number(g.tc_ano_anterior),
-      }),
-      { metaFat: 0, baseFat: 0, metaTc: 0, baseTc: 0 },
-    );
-  }, [goalsQuery.data]);
+    const result = { metaFat: 0, baseFat: 0, metaTc: 0, baseTc: 0 };
+    for (const dm of displayMonths) {
+      const t = monthlyTotals[dm.month];
+      if (t) {
+        result.baseFat += t.baseFat;
+        result.metaFat += t.metaFat;
+        result.baseTc += t.baseTc;
+        result.metaTc += t.metaTc;
+      }
+    }
+    return result;
+  }, [monthlyTotals, displayMonths]);
 
   // Totais Consolidados Gerais
   const grandTotals = useMemo(() => {
