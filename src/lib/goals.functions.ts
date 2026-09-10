@@ -334,8 +334,11 @@ const updateManualSchema = z.object({
   goal_id: z.string().uuid(),
   meta_faturamento: z.number().min(0),
   meta_tc: z.number().min(0),
+  faturamento_base: z.number().min(0).optional(),
+  tc_base: z.number().min(0).optional(),
   reason: z.string().min(3, "Informe uma justificativa para o ajuste manual da meta."),
 });
+
 
 /** Ajuste manual exclusivo do Master com justificativa e trilha de auditoria. */
 export const updateStoreGoalManual = createServerFn({ method: "POST" })
