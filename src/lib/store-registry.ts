@@ -272,7 +272,7 @@ export type StoreResolution = {
   /** explicação legível do que aconteceu */
   reason: string;
   /** sinais usados na decisão */
-  signals: { externalId?: string; code?: string; name?: string };
+  signals: { externalId: string | null; code: string | null; name: string | null };
 };
 
 function byExternalId(value: unknown): OfficialStore | null {
@@ -347,9 +347,9 @@ export function resolveStore(input: {
   const names = nameCandidates.length > 0 ? nameCandidates : nameCandidatesFromCode;
 
   const signals = {
-    externalId: input.externalId != null ? String(input.externalId) : undefined,
-    code: input.code != null ? String(input.code) : undefined,
-    name: input.name != null ? String(input.name) : undefined,
+    externalId: input.externalId != null ? String(input.externalId) : null,
+    code: input.code != null ? String(input.code) : null,
+    name: input.name != null ? String(input.name) : null,
   };
 
   const strong: Array<{ label: string; store: OfficialStore }> = [];
