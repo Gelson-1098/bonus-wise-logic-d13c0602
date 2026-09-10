@@ -557,12 +557,15 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
         description: "Cole no WhatsApp para enviar.",
       });
 
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(message).then(done).catch(() => {
-        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`, "_blank");
+    const fail = () =>
+      toast.error("Não foi possível copiar", {
+        description: "Copie o comparativo manualmente na tabela.",
       });
+
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(message).then(done).catch(fail);
     } else {
-      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`, "_blank");
+      fail();
     }
   }
 
