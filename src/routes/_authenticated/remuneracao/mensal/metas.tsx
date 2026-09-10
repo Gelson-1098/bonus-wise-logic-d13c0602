@@ -814,7 +814,7 @@ function BudgetMatrixView({ isMaster, onImportActuals }: { isMaster: boolean; on
               ? grandTotals.grandGap >= 0
                 ? "Superávit em relação à meta"
                 : "Déficit em relação à meta"
-              : "7 meses (Junho a Dezembro)"}
+              : selectedMonth === 0 ? "7 meses (Junho a Dezembro)" : MONTHS[selectedMonth - 1]}
           </p>
         </Card>
       </div>
