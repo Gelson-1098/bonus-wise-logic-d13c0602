@@ -42,7 +42,9 @@ export const getPeriodVersion = createServerFn({ method: "POST" })
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!period) throw new Error("Período não encontrado ou sem permissão de acesso.");
-    if (!period.version_id) return null;
+    if (!period.version_id) {
+      return { configured: false as const, message: "REGRA NÃO CONFIGURADA PARA ESTE PERÍODO" };
+    }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: version } = await supabaseAdmin
@@ -50,7 +52,8 @@ export const getPeriodVersion = createServerFn({ method: "POST" })
       .select("name,min_trigger_pct,alert_pct,target_pct")
       .eq("id", period.version_id)
       .maybeSingle();
-    return version ?? null;
+    if (!version) return { configured: false as const, message: "REGRA NÃO CONFIGURADA PARA ESTE PERÍODO" };
+    return { configured: true as const, ...version };
   });
 
 /** Critérios aplicáveis a um lançamento, com o nome do cargo do funcionário. */
@@ -68,6 +71,14 @@ export const getEntryRules = createServerFn({ method: "POST" })
     if (!entry) throw new Error("Lançamento não encontrado ou sem permissão de acesso.");
 
     const versionId = (entry.bonus_periods as unknown as { version_id: string | null } | null)?.version_id ?? null;
+    if (!versionId) {
+      return {
+        configured: false as const,
+        message: "REGRA NÃO CONFIGURADA PARA ESTE PERÍODO",
+        position_name: "",
+        criteria: [],
+      };
+    }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: position } = entry.position_id
@@ -85,6 +96,7 @@ export const getEntryRules = createServerFn({ method: "POST" })
       .order("sort_order");
 
     return {
+      configured: true as const,
       position_name: (position as { name: string } | null)?.name ?? "",
       criteria: criteria ?? [],
     };
