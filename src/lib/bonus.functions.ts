@@ -363,38 +363,56 @@ type PeriodPatch = {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type SupabaseLike = any;
 
+/**
+ * Resolução da versão de regras, na ordem obrigatória:
+ * 1. versão já vinculada ao período (histórico imutável);
+ * 2. versão publicada específica da loja, quando existir;
+ * 3. versão publicada global (sem loja) — comportamento atual da rede.
+ */
 async function resolveVersion(
   supabase: SupabaseLike,
   versionId: string | null,
   year: number,
   month: number,
+  storeId: string | null = null,
 ) {
+  const COLS = "id,name,min_trigger_pct,alert_pct,target_pct,store_id";
   if (versionId) {
     const { data } = await supabase
       .from("bonus_rule_versions")
-      .select("id,name,min_trigger_pct,alert_pct,target_pct")
+      .select(COLS)
       .eq("id", versionId)
       .maybeSingle();
     if (data) return data as VersionRow;
   }
   const quarter = Math.floor((month - 1) / 3) + 1;
-  const { data: exact } = await supabase
-    .from("bonus_rule_versions")
-    .select("id,name,min_trigger_pct,alert_pct,target_pct")
-    .eq("status", "publicada")
-    .eq("year", year)
-    .eq("quarter", quarter)
-    .maybeSingle();
-  if (exact) return exact as VersionRow;
-  const { data: latest } = await supabase
-    .from("bonus_rule_versions")
-    .select("id,name,min_trigger_pct,alert_pct,target_pct")
-    .eq("status", "publicada")
-    .order("year", { ascending: false })
-    .order("quarter", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (latest as VersionRow) ?? null;
+
+  const pick = async (scope: "store" | "global") => {
+    const scoped = (q: SupabaseLike) =>
+      scope === "store" ? q.eq("store_id", storeId) : q.is("store_id", null);
+
+    const { data: exact } = await scoped(
+      supabase.from("bonus_rule_versions").select(COLS).eq("status", "publicada").eq("year", year).eq("quarter", quarter),
+    )
+      .limit(1)
+      .maybeSingle();
+    if (exact) return exact as VersionRow;
+
+    const { data: latest } = await scoped(
+      supabase.from("bonus_rule_versions").select(COLS).eq("status", "publicada"),
+    )
+      .order("year", { ascending: false })
+      .order("quarter", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return (latest as VersionRow) ?? null;
+  };
+
+  if (storeId) {
+    const own = await pick("store");
+    if (own) return own;
+  }
+  return await pick("global");
 }
 
 type VersionRow = {
