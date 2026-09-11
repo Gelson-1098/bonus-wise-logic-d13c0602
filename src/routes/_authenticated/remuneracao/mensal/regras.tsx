@@ -200,26 +200,43 @@ function RegrasPage() {
       }),
   });
 
+  /**
+   * Duplica os critérios de uma versão de origem para uma nova versão.
+   * mode "next" = próximo trimestre no mesmo escopo; mode "store" = mesma competência
+   * copiada da versão global para a loja selecionada. Nunca altera a versão de origem.
+   */
   const cloneVersion = useMutation({
-    mutationFn: async () => {
-      if (!version) throw new Error("Selecione uma versão.");
-      const nextQuarter = version.quarter === 4 ? 1 : version.quarter + 1;
-      const nextYear = version.quarter === 4 ? version.year + 1 : version.year;
+    mutationFn: async (mode: "next" | "store") => {
+      const source =
+        mode === "store"
+          ? (versions.data ?? []).find((v) => v.store_id === null && v.status === "publicada") ??
+            (versions.data ?? []).find((v) => v.store_id === null) ??
+            null
+          : version;
+      if (!source) throw new Error("Nenhuma versão de origem disponível.");
+
+      const nextQuarter = mode === "store" ? source.quarter : source.quarter === 4 ? 1 : source.quarter + 1;
+      const nextYear = mode === "store" ? source.year : source.quarter === 4 ? source.year + 1 : source.year;
+      const targetStoreId = mode === "store" ? scope : source.store_id;
+      const suffix =
+        targetStoreId === null || targetStoreId === "global" ? "" : ` · ${scopeStoreName}`;
+
       const { data: created, error } = await supabase
         .from("bonus_rule_versions")
         .insert({
-          name: `${nextQuarter}º Trimestre/${nextYear}`,
+          name: `${nextQuarter}º Trimestre/${nextYear}${suffix}`,
           year: nextYear,
           quarter: nextQuarter,
           status: "rascunho",
-          min_trigger_pct: version.min_trigger_pct,
-          alert_pct: version.alert_pct,
-          target_pct: version.target_pct,
+          min_trigger_pct: source.min_trigger_pct,
+          alert_pct: source.alert_pct,
+          target_pct: source.target_pct,
+          store_id: targetStoreId === "global" ? null : targetStoreId,
         })
         .select("id")
         .single();
       if (error) throw new Error(error.message);
-      const { data: all } = await supabase.from("bonus_criteria").select("*").eq("version_id", version.id);
+      const { data: all } = await supabase.from("bonus_criteria").select("*").eq("version_id", source.id);
       const rows = (all ?? []).map((c) => {
         const { id, created_at, updated_at, version_id, ...rest } = c as Record<string, unknown>;
         return { ...rest, version_id: created.id };
