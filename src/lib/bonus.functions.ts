@@ -51,7 +51,13 @@ export const saveEntryCalculation = createServerFn({ method: "POST" })
     // Regras de bônus e valores-base são confidenciais: lidos no servidor após validar o acesso.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const version = await resolveVersion(supabaseAdmin, period.version_id, period.year, period.month);
+    const version = await resolveVersion(
+      supabaseAdmin,
+      period.version_id,
+      period.year,
+      period.month,
+      entry.store_id,
+    );
     if (!version) throw new Error("Nenhuma versão de regras publicada para este período.");
 
     const { data: positionRow } = entry.position_id
@@ -277,7 +283,7 @@ export const openPeriod = createServerFn({ method: "POST" })
     if (canAccess !== true) throw new Error("Sem permissão para abrir o período desta loja.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const version = await resolveVersion(supabaseAdmin, null, data.year, data.month);
+    const version = await resolveVersion(supabaseAdmin, null, data.year, data.month, data.store_id);
 
     const { data: existing } = await supabase
       .from("bonus_periods")
@@ -363,38 +369,56 @@ type PeriodPatch = {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type SupabaseLike = any;
 
+/**
+ * Resolução da versão de regras, na ordem obrigatória:
+ * 1. versão já vinculada ao período (histórico imutável);
+ * 2. versão publicada específica da loja, quando existir;
+ * 3. versão publicada global (sem loja) — comportamento atual da rede.
+ */
 async function resolveVersion(
   supabase: SupabaseLike,
   versionId: string | null,
   year: number,
   month: number,
+  storeId: string | null = null,
 ) {
+  const COLS = "id,name,min_trigger_pct,alert_pct,target_pct,store_id";
   if (versionId) {
     const { data } = await supabase
       .from("bonus_rule_versions")
-      .select("id,name,min_trigger_pct,alert_pct,target_pct")
+      .select(COLS)
       .eq("id", versionId)
       .maybeSingle();
     if (data) return data as VersionRow;
   }
   const quarter = Math.floor((month - 1) / 3) + 1;
-  const { data: exact } = await supabase
-    .from("bonus_rule_versions")
-    .select("id,name,min_trigger_pct,alert_pct,target_pct")
-    .eq("status", "publicada")
-    .eq("year", year)
-    .eq("quarter", quarter)
-    .maybeSingle();
-  if (exact) return exact as VersionRow;
-  const { data: latest } = await supabase
-    .from("bonus_rule_versions")
-    .select("id,name,min_trigger_pct,alert_pct,target_pct")
-    .eq("status", "publicada")
-    .order("year", { ascending: false })
-    .order("quarter", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (latest as VersionRow) ?? null;
+
+  const pick = async (scope: "store" | "global") => {
+    const scoped = (q: SupabaseLike) =>
+      scope === "store" ? q.eq("store_id", storeId) : q.is("store_id", null);
+
+    const { data: exact } = await scoped(
+      supabase.from("bonus_rule_versions").select(COLS).eq("status", "publicada").eq("year", year).eq("quarter", quarter),
+    )
+      .limit(1)
+      .maybeSingle();
+    if (exact) return exact as VersionRow;
+
+    const { data: latest } = await scoped(
+      supabase.from("bonus_rule_versions").select(COLS).eq("status", "publicada"),
+    )
+      .order("year", { ascending: false })
+      .order("quarter", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return (latest as VersionRow) ?? null;
+  };
+
+  if (storeId) {
+    const own = await pick("store");
+    if (own) return own;
+  }
+  return await pick("global");
 }
 
 type VersionRow = {
@@ -403,4 +427,5 @@ type VersionRow = {
   min_trigger_pct: number;
   alert_pct: number;
   target_pct: number;
+  store_id?: string | null;
 };

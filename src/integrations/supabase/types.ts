@@ -328,6 +328,7 @@ export type Database = {
           quarter: number
           starts_on: string | null
           status: Database["public"]["Enums"]["version_status"]
+          store_id: string | null
           target_pct: number
           updated_at: string
           year: number
@@ -345,6 +346,7 @@ export type Database = {
           quarter: number
           starts_on?: string | null
           status?: Database["public"]["Enums"]["version_status"]
+          store_id?: string | null
           target_pct?: number
           updated_at?: string
           year: number
@@ -362,11 +364,20 @@ export type Database = {
           quarter?: number
           starts_on?: string | null
           status?: Database["public"]["Enums"]["version_status"]
+          store_id?: string | null
           target_pct?: number
           updated_at?: string
           year?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "bonus_rule_versions_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       employee_criterion_results: {
         Row: {

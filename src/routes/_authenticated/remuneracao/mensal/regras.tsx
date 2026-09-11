@@ -50,7 +50,11 @@ type Version = {
   min_trigger_pct: number;
   alert_pct: number;
   target_pct: number;
+  store_id: string | null;
 };
+
+/** Lojas que podem ter versão própria de regras — identificadas pelo código oficial da loja. */
+const SCOPED_STORE_CODES = ["SPL", "DAGUA"] as const;
 
 type Criterion = {
   id: string;
@@ -77,17 +81,32 @@ function RegrasPage() {
   const isMaster = access?.isMaster ?? false;
   const [versionId, setVersionId] = useState("");
   const [positionId, setPositionId] = useState("");
+  /** "global" = versão padrão da rede; caso contrário o ID da loja com regras próprias. */
+  const [scope, setScope] = useState<string>("global");
 
   const versions = useQuery({
     queryKey: ["versions"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("bonus_rule_versions")
-        .select("id,name,year,quarter,status,min_trigger_pct,alert_pct,target_pct")
+        .select("id,name,year,quarter,status,min_trigger_pct,alert_pct,target_pct,store_id")
         .order("year", { ascending: false })
         .order("quarter", { ascending: false });
       if (error) throw new Error(error.message);
       return (data ?? []) as Version[];
+    },
+  });
+
+  const scopedStores = useQuery({
+    queryKey: ["scoped-rule-stores"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stores")
+        .select("id,name,code")
+        .in("code", SCOPED_STORE_CODES as unknown as string[])
+        .order("name");
+      if (error) throw new Error(error.message);
+      return (data ?? []) as { id: string; name: string; code: string | null }[];
     },
   });
 
@@ -97,14 +116,25 @@ function RegrasPage() {
     queryFn: async () => await loadPositions(),
   });
 
+  const scopeVersions = useMemo(
+    () =>
+      (versions.data ?? []).filter((v) => (scope === "global" ? v.store_id === null : v.store_id === scope)),
+    [versions.data, scope],
+  );
+
   useEffect(() => {
-    if (!versionId && versions.data?.length) setVersionId(versions.data[0]!.id);
-  }, [versions.data, versionId]);
+    const inScope = scopeVersions.some((v) => v.id === versionId);
+    if (!inScope) setVersionId(scopeVersions[0]?.id ?? "");
+  }, [scopeVersions, versionId]);
   useEffect(() => {
     if (!positionId && positions.data?.length) setPositionId(positions.data[0]!.id);
   }, [positions.data, positionId]);
 
-  const version = versions.data?.find((v) => v.id === versionId) ?? null;
+  const version = scopeVersions.find((v) => v.id === versionId) ?? null;
+  const scopeStoreName =
+    scope === "global"
+      ? "Global (rede)"
+      : (scopedStores.data ?? []).find((s) => s.id === scope)?.name ?? "Loja";
   const locked = !isMaster || version?.status === "arquivada";
 
   const criteria = useQuery({
@@ -170,26 +200,43 @@ function RegrasPage() {
       }),
   });
 
+  /**
+   * Duplica os critérios de uma versão de origem para uma nova versão.
+   * mode "next" = próximo trimestre no mesmo escopo; mode "store" = mesma competência
+   * copiada da versão global para a loja selecionada. Nunca altera a versão de origem.
+   */
   const cloneVersion = useMutation({
-    mutationFn: async () => {
-      if (!version) throw new Error("Selecione uma versão.");
-      const nextQuarter = version.quarter === 4 ? 1 : version.quarter + 1;
-      const nextYear = version.quarter === 4 ? version.year + 1 : version.year;
+    mutationFn: async (mode: "next" | "store") => {
+      const source =
+        mode === "store"
+          ? (versions.data ?? []).find((v) => v.store_id === null && v.status === "publicada") ??
+            (versions.data ?? []).find((v) => v.store_id === null) ??
+            null
+          : version;
+      if (!source) throw new Error("Nenhuma versão de origem disponível.");
+
+      const nextQuarter = mode === "store" ? source.quarter : source.quarter === 4 ? 1 : source.quarter + 1;
+      const nextYear = mode === "store" ? source.year : source.quarter === 4 ? source.year + 1 : source.year;
+      const targetStoreId = mode === "store" ? scope : source.store_id;
+      const suffix =
+        targetStoreId === null || targetStoreId === "global" ? "" : ` · ${scopeStoreName}`;
+
       const { data: created, error } = await supabase
         .from("bonus_rule_versions")
         .insert({
-          name: `${nextQuarter}º Trimestre/${nextYear}`,
+          name: `${nextQuarter}º Trimestre/${nextYear}${suffix}`,
           year: nextYear,
           quarter: nextQuarter,
           status: "rascunho",
-          min_trigger_pct: version.min_trigger_pct,
-          alert_pct: version.alert_pct,
-          target_pct: version.target_pct,
+          min_trigger_pct: source.min_trigger_pct,
+          alert_pct: source.alert_pct,
+          target_pct: source.target_pct,
+          store_id: targetStoreId === "global" ? null : targetStoreId,
         })
         .select("id")
         .single();
       if (error) throw new Error(error.message);
-      const { data: all } = await supabase.from("bonus_criteria").select("*").eq("version_id", version.id);
+      const { data: all } = await supabase.from("bonus_criteria").select("*").eq("version_id", source.id);
       const rows = (all ?? []).map((c) => {
         const { id, created_at, updated_at, version_id, ...rest } = c as Record<string, unknown>;
         return { ...rest, version_id: created.id };
@@ -270,21 +317,39 @@ function RegrasPage() {
       description="Versões trimestrais — alterações não afetam períodos já fechados"
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          <Select value={scope} onValueChange={setScope}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Loja" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="global">Global (rede)</SelectItem>
+              {(scopedStores.data ?? []).map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={versionId} onValueChange={setVersionId}>
             <SelectTrigger className="w-[220px]">
               <SelectValue placeholder="Versão" />
             </SelectTrigger>
             <SelectContent>
-              {(versions.data ?? []).map((v) => (
+              {scopeVersions.map((v) => (
                 <SelectItem key={v.id} value={v.id}>
                   {v.name} · {v.status}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          {isMaster && (
-            <Button variant="outline" size="sm" onClick={() => cloneVersion.mutate()}>
+          {isMaster && version && (
+            <Button variant="outline" size="sm" onClick={() => cloneVersion.mutate("next")}>
               <Copy className="size-4" /> Duplicar para próximo trimestre
+            </Button>
+          )}
+          {isMaster && scope !== "global" && (
+            <Button variant="outline" size="sm" onClick={() => cloneVersion.mutate("store")}>
+              <Plus className="size-4" /> Criar versão desta loja
             </Button>
           )}
         </div>
@@ -297,6 +362,19 @@ function RegrasPage() {
           <AlertDescription>Apenas o perfil Master pode alterar as regras de bonificação.</AlertDescription>
         </Alert>
       )}
+
+      {scope !== "global" && (
+        <Alert className="mb-4">
+          <AlertTriangle className="size-4" />
+          <AlertTitle>Regras exclusivas de {scopeStoreName}</AlertTitle>
+          <AlertDescription>
+            {scopeVersions.length === 0
+              ? "Esta loja ainda não tem versão própria. Use “Criar versão desta loja” para copiar a estrutura da versão global e ajustar os indicadores. Enquanto não houver versão publicada, a loja segue a regra global."
+              : "As alterações abaixo valem somente para esta loja. As demais lojas continuam na versão global."}
+          </AlertDescription>
+        </Alert>
+      )}
+
 
       {version && (
         <Card className="mb-5">
