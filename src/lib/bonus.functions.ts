@@ -51,7 +51,13 @@ export const saveEntryCalculation = createServerFn({ method: "POST" })
     // Regras de bônus e valores-base são confidenciais: lidos no servidor após validar o acesso.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const version = await resolveVersion(supabaseAdmin, period.version_id, period.year, period.month);
+    const version = await resolveVersion(
+      supabaseAdmin,
+      period.version_id,
+      period.year,
+      period.month,
+      entry.store_id,
+    );
     if (!version) throw new Error("Nenhuma versão de regras publicada para este período.");
 
     const { data: positionRow } = entry.position_id
@@ -277,7 +283,7 @@ export const openPeriod = createServerFn({ method: "POST" })
     if (canAccess !== true) throw new Error("Sem permissão para abrir o período desta loja.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const version = await resolveVersion(supabaseAdmin, null, data.year, data.month);
+    const version = await resolveVersion(supabaseAdmin, null, data.year, data.month, data.store_id);
 
     const { data: existing } = await supabase
       .from("bonus_periods")
@@ -421,4 +427,5 @@ type VersionRow = {
   min_trigger_pct: number;
   alert_pct: number;
   target_pct: number;
+  store_id?: string | null;
 };
