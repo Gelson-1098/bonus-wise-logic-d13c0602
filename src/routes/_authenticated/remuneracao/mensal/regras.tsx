@@ -317,21 +317,39 @@ function RegrasPage() {
       description="Versões trimestrais — alterações não afetam períodos já fechados"
       actions={
         <div className="flex flex-wrap items-center gap-2">
+          <Select value={scope} onValueChange={setScope}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Loja" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="global">Global (rede)</SelectItem>
+              {(scopedStores.data ?? []).map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={versionId} onValueChange={setVersionId}>
             <SelectTrigger className="w-[220px]">
               <SelectValue placeholder="Versão" />
             </SelectTrigger>
             <SelectContent>
-              {(versions.data ?? []).map((v) => (
+              {scopeVersions.map((v) => (
                 <SelectItem key={v.id} value={v.id}>
                   {v.name} · {v.status}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          {isMaster && (
-            <Button variant="outline" size="sm" onClick={() => cloneVersion.mutate()}>
+          {isMaster && version && (
+            <Button variant="outline" size="sm" onClick={() => cloneVersion.mutate("next")}>
               <Copy className="size-4" /> Duplicar para próximo trimestre
+            </Button>
+          )}
+          {isMaster && scope !== "global" && (
+            <Button variant="outline" size="sm" onClick={() => cloneVersion.mutate("store")}>
+              <Plus className="size-4" /> Criar versão desta loja
             </Button>
           )}
         </div>
@@ -344,6 +362,19 @@ function RegrasPage() {
           <AlertDescription>Apenas o perfil Master pode alterar as regras de bonificação.</AlertDescription>
         </Alert>
       )}
+
+      {scope !== "global" && (
+        <Alert className="mb-4">
+          <AlertTriangle className="size-4" />
+          <AlertTitle>Regras exclusivas de {scopeStoreName}</AlertTitle>
+          <AlertDescription>
+            {scopeVersions.length === 0
+              ? "Esta loja ainda não tem versão própria. Use “Criar versão desta loja” para copiar a estrutura da versão global e ajustar os indicadores. Enquanto não houver versão publicada, a loja segue a regra global."
+              : "As alterações abaixo valem somente para esta loja. As demais lojas continuam na versão global."}
+          </AlertDescription>
+        </Alert>
+      )}
+
 
       {version && (
         <Card className="mb-5">
