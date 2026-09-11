@@ -22,7 +22,8 @@ export function LoginCard() {
 
   async function signIn() {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const cleanEmail = email.trim().toLowerCase();
+    const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
     setLoading(false);
     if (error) {
       toast.error("Não foi possível entrar", { description: error.message });
