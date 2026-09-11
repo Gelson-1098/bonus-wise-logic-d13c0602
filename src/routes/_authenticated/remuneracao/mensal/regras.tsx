@@ -50,7 +50,11 @@ type Version = {
   min_trigger_pct: number;
   alert_pct: number;
   target_pct: number;
+  store_id: string | null;
 };
+
+/** Lojas que podem ter versão própria de regras — identificadas pelo código oficial da loja. */
+const SCOPED_STORE_CODES = ["SPL", "DAGUA"] as const;
 
 type Criterion = {
   id: string;
