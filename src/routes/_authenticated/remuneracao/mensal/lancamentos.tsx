@@ -165,7 +165,8 @@ function LancamentoPage() {
     tc_actual: number | null;
     manager_note: string | null;
   } | null;
-  const version = versionQuery.data ?? null;
+  const version = versionQuery.data?.configured ? versionQuery.data : null;
+  const missingRule = !!periodId && versionQuery.data?.configured === false;
   const goalMeta = goalQuery.data?.meta_faturamento ?? null;
   const metaValue = target?.target_adjusted ?? goalMeta ?? target?.target_calculated ?? null;
   const attainment =
@@ -251,6 +252,16 @@ function LancamentoPage() {
             )}
           </div>
 
+          {missingRule && (
+            <Alert variant="destructive">
+              <AlertTriangle className="size-4" />
+              <AlertTitle>REGRA NÃO CONFIGURADA PARA ESTE PERÍODO</AlertTitle>
+              <AlertDescription>
+                Configure ou vincule uma regra para esta loja e competência antes de calcular o bônus.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {status === "correcao_solicitada" && periodQuery.data?.review_note && (
             <Alert variant="destructive">
               <AlertTriangle className="size-4" />
@@ -325,7 +336,7 @@ function LancamentoPage() {
                           {brl(e.approved_value ?? e.calculated_value)}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" onClick={() => setOpenEntry(e.id)}>
+                          <Button variant="ghost" size="sm" disabled={missingRule} onClick={() => setOpenEntry(e.id)}>
                             <Calculator className="size-4" /> Lançar
                           </Button>
                         </TableCell>
@@ -689,6 +700,12 @@ function EntryDialog({
 
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Carregando indicadores…</p>
+        ) : data?.configured === false ? (
+          <Alert variant="destructive">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>REGRA NÃO CONFIGURADA PARA ESTE PERÍODO</AlertTitle>
+            <AlertDescription>Vincule uma regra válida antes de calcular este lançamento.</AlertDescription>
+          </Alert>
         ) : criteria.length === 0 ? (
           <Alert>
             <AlertTriangle className="size-4" />

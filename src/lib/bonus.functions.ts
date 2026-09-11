@@ -58,7 +58,7 @@ export const saveEntryCalculation = createServerFn({ method: "POST" })
       period.month,
       entry.store_id,
     );
-    if (!version) throw new Error("Nenhuma versão de regras publicada para este período.");
+    if (!version) throw new Error(RULE_NOT_CONFIGURED);
 
     const { data: positionRow } = entry.position_id
       ? await supabaseAdmin
@@ -283,15 +283,22 @@ export const openPeriod = createServerFn({ method: "POST" })
     if (canAccess !== true) throw new Error("Sem permissão para abrir o período desta loja.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const version = await resolveVersion(supabaseAdmin, null, data.year, data.month, data.store_id);
-
     const { data: existing } = await supabase
       .from("bonus_periods")
-      .select("id, status")
+      .select("id, status, version_id")
       .eq("store_id", data.store_id)
       .eq("year", data.year)
       .eq("month", data.month)
       .maybeSingle();
+
+    const version = await resolveVersion(
+      supabaseAdmin,
+      existing?.version_id ?? null,
+      data.year,
+      data.month,
+      data.store_id,
+    );
+    if (!version) throw new Error(RULE_NOT_CONFIGURED);
 
     let periodId = existing?.id ?? null;
     if (!periodId) {
@@ -301,7 +308,7 @@ export const openPeriod = createServerFn({ method: "POST" })
           store_id: data.store_id,
           year: data.year,
           month: data.month,
-          version_id: version?.id ?? null,
+          version_id: version.id,
         })
         .select("id")
         .single();
@@ -319,6 +326,12 @@ export const openPeriod = createServerFn({ method: "POST" })
         updated_by: userId,
         target_calculated: goal?.meta_faturamento ?? null,
       });
+    } else if (!existing?.version_id) {
+      const { error } = await supabase
+        .from("bonus_periods")
+        .update({ version_id: version.id })
+        .eq("id", periodId);
+      if (error) throw new Error(error.message);
     }
 
 
@@ -337,7 +350,7 @@ export const openPeriod = createServerFn({ method: "POST" })
     const toInsert = (employees ?? [])
       .filter((e) => !have.has(e.id))
       .map((e) => ({
-        period_id: periodId!,
+         period_id: periodId,
         employee_id: e.id,
         store_id: data.store_id,
         position_id: e.position_id,
@@ -369,56 +382,64 @@ type PeriodPatch = {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type SupabaseLike = any;
 
+export const RULE_NOT_CONFIGURED = "REGRA NÃO CONFIGURADA PARA ESTE PERÍODO";
+export const MULTIPLE_RULES_CONFIGURED =
+  "EXISTEM MÚLTIPLAS VERSÕES VÁLIDAS PARA ESTE PERÍODO — NECESSÁRIA DEFINIÇÃO DO MASTER";
+
 /**
  * Resolução da versão de regras, na ordem obrigatória:
  * 1. versão já vinculada ao período (histórico imutável);
- * 2. versão publicada específica da loja, quando existir;
- * 3. versão publicada global (sem loja) — comportamento atual da rede.
+ * 2. loja + ano + mês;
+ * 3. loja + ano + trimestre legado;
+ * 4. global + ano + mês;
+ * 5. global + ano + trimestre legado.
+ * Empates são bloqueados e não existe fallback para a versão mais recente.
  */
-async function resolveVersion(
+export async function resolveVersion(
   supabase: SupabaseLike,
   versionId: string | null,
   year: number,
   month: number,
   storeId: string | null = null,
 ) {
-  const COLS = "id,name,min_trigger_pct,alert_pct,target_pct,store_id";
+  const COLS = "id,name,min_trigger_pct,alert_pct,target_pct,store_id,year,quarter,month,status";
   if (versionId) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("bonus_rule_versions")
       .select(COLS)
       .eq("id", versionId)
       .maybeSingle();
+    if (error) throw new Error(error.message);
     if (data) return data as VersionRow;
+    throw new Error("A versão vinculada ao período não foi encontrada.");
   }
   const quarter = Math.floor((month - 1) / 3) + 1;
 
-  const pick = async (scope: "store" | "global") => {
-    const scoped = (q: SupabaseLike) =>
-      scope === "store" ? q.eq("store_id", storeId) : q.is("store_id", null);
-
-    const { data: exact } = await scoped(
-      supabase.from("bonus_rule_versions").select(COLS).eq("status", "publicada").eq("year", year).eq("quarter", quarter),
-    )
-      .limit(1)
-      .maybeSingle();
-    if (exact) return exact as VersionRow;
-
-    const { data: latest } = await scoped(
-      supabase.from("bonus_rule_versions").select(COLS).eq("status", "publicada"),
-    )
-      .order("year", { ascending: false })
-      .order("quarter", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    return (latest as VersionRow) ?? null;
+  const pick = async (scopeStoreId: string | null, exactMonth: number | null) => {
+    let query = supabase
+      .from("bonus_rule_versions")
+      .select(COLS)
+      .eq("status", "publicada")
+      .eq("year", year);
+    query = scopeStoreId ? query.eq("store_id", scopeStoreId) : query.is("store_id", null);
+    query = exactMonth === null
+      ? query.is("month", null).eq("quarter", quarter)
+      : query.eq("month", exactMonth);
+    const { data, error } = await query.order("id", { ascending: true }).limit(2);
+    if (error) throw new Error(error.message);
+    if ((data ?? []).length > 1) throw new Error(MULTIPLE_RULES_CONFIGURED);
+    return ((data ?? [])[0] as VersionRow | undefined) ?? null;
   };
 
   if (storeId) {
-    const own = await pick("store");
-    if (own) return own;
+    const ownMonth = await pick(storeId, month);
+    if (ownMonth) return ownMonth;
+    const ownLegacy = await pick(storeId, null);
+    if (ownLegacy) return ownLegacy;
   }
-  return await pick("global");
+  const globalMonth = await pick(null, month);
+  if (globalMonth) return globalMonth;
+  return await pick(null, null);
 }
 
 type VersionRow = {
@@ -428,4 +449,8 @@ type VersionRow = {
   alert_pct: number;
   target_pct: number;
   store_id?: string | null;
+  year: number;
+  quarter: number;
+  month: number | null;
+  status: string;
 };
