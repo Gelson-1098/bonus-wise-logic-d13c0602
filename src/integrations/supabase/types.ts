@@ -322,6 +322,7 @@ export type Database = {
           ends_on: string | null
           id: string
           min_trigger_pct: number
+          month: number | null
           name: string
           notes: string | null
           published_at: string | null
@@ -340,6 +341,7 @@ export type Database = {
           ends_on?: string | null
           id?: string
           min_trigger_pct?: number
+          month?: number | null
           name: string
           notes?: string | null
           published_at?: string | null
@@ -358,6 +360,7 @@ export type Database = {
           ends_on?: string | null
           id?: string
           min_trigger_pct?: number
+          month?: number | null
           name?: string
           notes?: string | null
           published_at?: string | null
@@ -1126,6 +1129,15 @@ export type Database = {
         Returns: boolean
       }
       is_master: { Args: never; Returns: boolean }
+      save_bonus_rule_draft: {
+        Args: {
+          _criteria: Json
+          _deleted_ids?: string[]
+          _version_id: string
+          _version_patch: Json
+        }
+        Returns: undefined
+      }
       set_security_setting: {
         Args: { _by: string; _key: string; _value: string }
         Returns: undefined
