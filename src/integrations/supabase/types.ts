@@ -1119,6 +1119,15 @@ export type Database = {
     }
     Functions: {
       can_access_store: { Args: { _store_id: string }; Returns: boolean }
+      clone_bonus_rule_month: {
+        Args: {
+          _month: number
+          _source_version_id: string
+          _store_id: string
+          _year: number
+        }
+        Returns: string
+      }
       get_security_setting: { Args: { _key: string }; Returns: string }
       get_security_setting_meta: { Args: { _key: string }; Returns: string }
       has_role: {
