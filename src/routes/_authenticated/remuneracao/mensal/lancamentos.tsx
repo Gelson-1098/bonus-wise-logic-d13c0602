@@ -627,6 +627,7 @@ function EntryDialog({
 
       return {
         entry,
+        configured: rules.configured,
         position_name: rules.position_name,
         criteria: rules.criteria as CriterionRow[],
         results: results ?? [],
