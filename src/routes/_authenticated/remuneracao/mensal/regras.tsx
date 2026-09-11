@@ -81,17 +81,32 @@ function RegrasPage() {
   const isMaster = access?.isMaster ?? false;
   const [versionId, setVersionId] = useState("");
   const [positionId, setPositionId] = useState("");
+  /** "global" = versão padrão da rede; caso contrário o ID da loja com regras próprias. */
+  const [scope, setScope] = useState<string>("global");
 
   const versions = useQuery({
     queryKey: ["versions"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("bonus_rule_versions")
-        .select("id,name,year,quarter,status,min_trigger_pct,alert_pct,target_pct")
+        .select("id,name,year,quarter,status,min_trigger_pct,alert_pct,target_pct,store_id")
         .order("year", { ascending: false })
         .order("quarter", { ascending: false });
       if (error) throw new Error(error.message);
       return (data ?? []) as Version[];
+    },
+  });
+
+  const scopedStores = useQuery({
+    queryKey: ["scoped-rule-stores"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("stores")
+        .select("id,name,code")
+        .in("code", SCOPED_STORE_CODES as unknown as string[])
+        .order("name");
+      if (error) throw new Error(error.message);
+      return (data ?? []) as { id: string; name: string; code: string | null }[];
     },
   });
 
@@ -101,14 +116,25 @@ function RegrasPage() {
     queryFn: async () => await loadPositions(),
   });
 
+  const scopeVersions = useMemo(
+    () =>
+      (versions.data ?? []).filter((v) => (scope === "global" ? v.store_id === null : v.store_id === scope)),
+    [versions.data, scope],
+  );
+
   useEffect(() => {
-    if (!versionId && versions.data?.length) setVersionId(versions.data[0]!.id);
-  }, [versions.data, versionId]);
+    const inScope = scopeVersions.some((v) => v.id === versionId);
+    if (!inScope) setVersionId(scopeVersions[0]?.id ?? "");
+  }, [scopeVersions, versionId]);
   useEffect(() => {
     if (!positionId && positions.data?.length) setPositionId(positions.data[0]!.id);
   }, [positions.data, positionId]);
 
-  const version = versions.data?.find((v) => v.id === versionId) ?? null;
+  const version = scopeVersions.find((v) => v.id === versionId) ?? null;
+  const scopeStoreName =
+    scope === "global"
+      ? "Global (rede)"
+      : (scopedStores.data ?? []).find((s) => s.id === scope)?.name ?? "Loja";
   const locked = !isMaster || version?.status === "arquivada";
 
   const criteria = useQuery({
