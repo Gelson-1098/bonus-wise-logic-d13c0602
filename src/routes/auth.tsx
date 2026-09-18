@@ -20,8 +20,12 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-secondary/50 px-4 py-12">
-      <LoginCard />
-    </div>
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#f4f5f5] px-4 py-10">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.95),transparent_52%)]" />
+      <div className="relative w-full max-w-[390px]">
+        <LoginCard />
+        <p className="mt-6 text-center text-[11px] tracking-wide text-neutral-400">Ambiente seguro e restrito</p>
+      </div>
+    </main>
   );
 }

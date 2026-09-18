@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listPositionsBasic } from "@/lib/rules.functions";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/app-shell";
 import { useAccess } from "@/hooks/use-auth";
@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { brl } from "@/lib/format";
+import { EmployeeImportDialog } from "@/components/employee-import-dialog";
 
 export const Route = createFileRoute("/_authenticated/admin/cadastros")({
   head: () => ({
@@ -319,12 +320,13 @@ function EmployeesTab({ editable }: { editable: boolean }) {
   const qc = useQueryClient();
   const [storeFilter, setStoreFilter] = useState("todas");
   const [openNew, setOpenNew] = useState(false);
+  const [openImport, setOpenImport] = useState(false);
   const [form, setForm] = useState({ full_name: "", store_id: "", position_id: "", registration: "", cpf: "" });
 
   const stores = useQuery({
     queryKey: ["stores-active"],
     queryFn: async () => {
-      const { data } = await supabase.from("stores").select("id,name").eq("active", true).order("name");
+      const { data } = await supabase.from("stores").select("id,name,code").eq("active", true).order("name");
       return data ?? [];
     },
   });
@@ -344,7 +346,7 @@ function EmployeesTab({ editable }: { editable: boolean }) {
     queryFn: async () => {
       let q = supabase
         .from("employees")
-        .select("id,full_name,registration,active,bonus_eligible,store_id,position_id,stores(name)")
+        .select("id,full_name,registration,cpf,active,bonus_eligible,store_id,position_id,stores(name)")
         .order("full_name");
       if (storeFilter !== "todas") q = q.eq("store_id", storeFilter);
       const { data, error } = await q;
@@ -404,9 +406,14 @@ function EmployeesTab({ editable }: { editable: boolean }) {
             </SelectContent>
           </Select>
           {editable && (
-            <Button size="sm" onClick={() => setOpenNew(true)}>
-              <Plus className="size-4" /> Novo
-            </Button>
+            <>
+              <Button size="sm" variant="outline" onClick={() => setOpenImport(true)}>
+                <Upload className="size-4" /> Importar
+              </Button>
+              <Button size="sm" onClick={() => setOpenNew(true)}>
+                <Plus className="size-4" /> Novo
+              </Button>
+            </>
           )}
         </div>
       </CardHeader>
@@ -540,6 +547,14 @@ function EmployeesTab({ editable }: { editable: boolean }) {
           </div>
         </DialogContent>
       </Dialog>
+      <EmployeeImportDialog
+        open={openImport}
+        onOpenChange={setOpenImport}
+        stores={stores.data ?? []}
+        positions={positions.data ?? []}
+        existing={employees.data ?? []}
+        onSaved={() => qc.invalidateQueries({ queryKey: ["employees"] })}
+      />
     </Card>
   );
 }
