@@ -31,6 +31,8 @@ export type ConsultGoal = {
 export type ConsultActual = {
   store_id: string;
   month: number;
+  receita_liquida: number | null;
+  taxa_servico: number | null;
   revenue_actual: number | null;
   tc_actual: number | null;
 };
@@ -54,7 +56,7 @@ export const readMetasConsultivo = createServerFn({ method: "GET" })
       supabaseAdmin.from("bonus_periods").select("id,store_id,month,year").eq("year", year),
       supabaseAdmin
         .from("revenue_history")
-        .select("store_id,month,receita_vendas,tc,faturamento_base_meta")
+        .select("store_id,month,receita_vendas,taxa_servico,tc,faturamento_base_meta")
         .eq("year", year),
     ]);
 
@@ -71,7 +73,7 @@ export const readMetasConsultivo = createServerFn({ method: "GET" })
 
     // Realizado: store_targets vinculado ao período (fonte oficial) e,
     // como complemento, revenue_history do mesmo ano.
-    const map = new Map<string, { revenue_actual: number | null; tc_actual: number | null }>();
+    const map = new Map<string, { receita_liquida: number | null; taxa_servico: number | null; revenue_actual: number | null; tc_actual: number | null }>();
 
     const periods = periodsRes.data ?? [];
     if (periods.length) {
@@ -90,6 +92,8 @@ export const readMetasConsultivo = createServerFn({ method: "GET" })
         const tc = t.tc_actual != null ? Number(t.tc_actual) : null;
         if (rev == null && tc == null) continue;
         map.set(`${String(p.store_id).trim()}-${Number(p.month)}`, {
+          receita_liquida: null,
+          taxa_servico: null,
           revenue_actual: rev,
           tc_actual: tc,
         });
@@ -97,22 +101,23 @@ export const readMetasConsultivo = createServerFn({ method: "GET" })
     }
 
     for (const rh of histRes.data ?? []) {
-      const rev =
-        rh.receita_vendas != null && Number(rh.receita_vendas) > 0
-          ? Number(rh.receita_vendas)
-          : rh.faturamento_base_meta != null && Number(rh.faturamento_base_meta) > 0
-            ? Number(rh.faturamento_base_meta)
-            : null;
+      const receita = rh.receita_vendas != null ? Number(rh.receita_vendas) : null;
+      const taxa = rh.taxa_servico != null ? Number(rh.taxa_servico) : null;
+      const rev = rh.faturamento_base_meta != null
+        ? Number(rh.faturamento_base_meta)
+        : receita != null || taxa != null
+          ? Number(receita ?? 0) + Number(taxa ?? 0)
+          : null;
       const tc = rh.tc != null && Number(rh.tc) > 0 ? Number(rh.tc) : null;
       if (rev == null && tc == null) continue;
       const key = `${String(rh.store_id).trim()}-${Number(rh.month)}`;
       const existing = map.get(key);
-      if (!existing || existing.revenue_actual == null) {
-        map.set(key, {
-          revenue_actual: rev ?? existing?.revenue_actual ?? null,
-          tc_actual: tc ?? existing?.tc_actual ?? null,
-        });
-      }
+      map.set(key, {
+        receita_liquida: receita,
+        taxa_servico: taxa,
+        revenue_actual: existing?.revenue_actual ?? rev,
+        tc_actual: existing?.tc_actual ?? tc,
+      });
     }
 
     const actuals: ConsultActual[] = Array.from(map.entries()).map(([key, val]) => {
@@ -120,6 +125,8 @@ export const readMetasConsultivo = createServerFn({ method: "GET" })
       return {
         store_id: key.slice(0, sep),
         month: Number(key.slice(sep + 1)),
+        receita_liquida: val.receita_liquida,
+        taxa_servico: val.taxa_servico,
         revenue_actual: val.revenue_actual,
         tc_actual: val.tc_actual,
       };

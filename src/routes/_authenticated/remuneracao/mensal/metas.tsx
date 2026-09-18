@@ -52,7 +52,7 @@ import {
   importRevenueHistory,
 } from "@/lib/goals.functions";
 import { readMetasConsultivo } from "@/lib/metas-read.functions";
-import { parseWorkbookAuto, normalize, type AutoImportedRow, type AutoImportResult } from "@/lib/goal-import";
+import { parseWorkbookAuto, readGoalWorkbook, normalize, type AutoImportedRow, type AutoImportResult } from "@/lib/goal-import";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import * as XLSX from "xlsx";
 
@@ -1633,7 +1633,7 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
     setLoadError(null);
     try {
       const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { cellDates: true, raw: true });
+      const wb = readGoalWorkbook(buffer);
       setWorkbook(wb);
       setFileName(file.name);
       setStep("review");
@@ -1779,8 +1779,8 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
             store_id: r.storeId!,
             year: baseYear,
             month: r.month,
-            receita_vendas: Number(r.faturamentoRealizado ?? 0),
-            taxa_servico: 0,
+            receita_vendas: Number(r.receitaLiquida ?? r.faturamentoRealizado ?? 0),
+            taxa_servico: Number(r.taxaServico ?? 0),
             tc: Number(r.tc ?? 0),
             source_file: fileName || "Importação Faturamento Realizado",
             imported_at: new Date().toISOString(),
@@ -1821,6 +1821,12 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
         // (coluna de base, quando existir; senão o total faturado do mês).
         const baseOf = (r: (typeof validRows)[number]) =>
           Number(r.faturamentoBaseAnoAnterior ?? r.faturamentoRealizado ?? r.faturamentoOrcado ?? 0);
+        const receitaOf = (r: (typeof validRows)[number]) =>
+          r.faturamentoBaseAnoAnterior != null
+            ? Number(r.faturamentoBaseAnoAnterior)
+            : Number(r.receitaLiquida ?? r.faturamentoRealizado ?? r.faturamentoOrcado ?? 0);
+        const taxaOf = (r: (typeof validRows)[number]) =>
+          r.faturamentoBaseAnoAnterior != null ? 0 : Number(r.taxaServico ?? 0);
         // Meses sem faturamento no histórico não geram meta (não inventar valores).
         const historyRows = validRows.filter((r) => baseOf(r) > 0);
 
@@ -1829,8 +1835,8 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
             store_id: r.storeId!,
             year: baseYear - 1,
             month: r.month,
-            receita_vendas: baseOf(r),
-            taxa_servico: 0,
+            receita_vendas: receitaOf(r),
+            taxa_servico: taxaOf(r),
             tc: Number(r.tc ?? 0),
             source_file: fileName || null,
             imported_at: new Date().toISOString(),
@@ -1865,8 +1871,8 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
               rows: historyRows.map((r) => ({
                 store_id: r.storeId!,
                 month: r.month,
-                receita_vendas: baseOf(r),
-                taxa_servico: 0,
+                receita_vendas: receitaOf(r),
+                taxa_servico: taxaOf(r),
                 tc: Number(r.tc ?? 0),
               })),
             },
@@ -2164,9 +2170,9 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
                       <TableHead className="w-[200px]">Loja</TableHead>
                       <TableHead className="w-[130px]">Período</TableHead>
                       <TableHead className="text-right w-[160px]">Faturamento Orçado</TableHead>
-                      <TableHead className="text-right w-[180px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">
-                        Faturamento Realizado
-                      </TableHead>
+                      <TableHead className="text-right w-[150px]">Receita Líquida</TableHead>
+                      <TableHead className="text-right w-[150px]">Taxa Serviço/Entrega</TableHead>
+                      <TableHead className="text-right w-[180px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">Faturamento para Meta</TableHead>
                       <TableHead className="text-right w-[110px]">TC (Pedidos)</TableHead>
                       <TableHead className="text-right w-[120px]">% Atingimento</TableHead>
                       <TableHead className="text-center w-[100px]">Status</TableHead>
@@ -2184,6 +2190,12 @@ function ImportWizard({ initialMode = "realizado" }: { initialMode?: "realizado"
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             {r.faturamentoOrcado !== null ? brl(r.faturamentoOrcado) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {r.receitaLiquida !== null ? brl(r.receitaLiquida) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {r.taxaServico !== null ? brl(r.taxaServico) : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="text-right font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/30 dark:bg-emerald-950/10 text-xs">
                             {r.faturamentoRealizado !== null ? brl(r.faturamentoRealizado) : <span className="text-muted-foreground">—</span>}
