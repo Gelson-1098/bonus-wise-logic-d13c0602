@@ -7,8 +7,8 @@ type ImportRow = {
   full_name: string;
   store_id: string;
   position_id: string;
-  registration?: string | null;
-  cpf?: string | null;
+  registration?: string | null | undefined;
+  cpf?: string | null | undefined;
 };
 
 const normalize = (value: string | null | undefined) =>

@@ -75,6 +75,13 @@ async function readExcel(file: File) {
 
 type PdfTextItem = { str: string; transform: number[] };
 
+function isPdfTextItem(item: unknown): item is PdfTextItem {
+  return Boolean(
+    item && typeof item === "object" && "str" in item && "transform" in item &&
+    typeof (item as PdfTextItem).str === "string" && Array.isArray((item as PdfTextItem).transform),
+  );
+}
+
 async function readPdf(file: File) {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
@@ -84,7 +91,7 @@ async function readPdf(file: File) {
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
     const page = await document.getPage(pageNumber);
     const content = await page.getTextContent();
-    const items = content.items.filter((item): item is PdfTextItem => "str" in item && Boolean(item.str.trim()));
+    const items = content.items.filter(isPdfTextItem).filter((item) => Boolean(item.str.trim()));
     const lines = new Map<number, PdfTextItem[]>();
     for (const item of items) {
       const y = Math.round(item.transform[5] ?? 0);
