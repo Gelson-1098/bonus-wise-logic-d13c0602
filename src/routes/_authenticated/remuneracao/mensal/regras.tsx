@@ -177,7 +177,11 @@ function RegrasPage() {
       const source = (versions.data ?? []).find((v) => v.store_id === null && v.year === year && v.month === month && v.status === "publicada")
         ?? (versions.data ?? []).find((v) => v.store_id === null && v.year === year && v.month === null && v.quarter === quarter && v.status === "publicada");
       if (!source) throw new Error("Não existe regra global aplicável para copiar nesta competência.");
-      const { data, error } = await supabase.rpc("clone_bonus_rule_month", {
+      const cloneRule = supabase.rpc as unknown as (
+        name: "clone_bonus_rule_month",
+        args: { _source_version_id: string; _store_id: string | null; _year: number; _month: number },
+      ) => Promise<{ data: unknown; error: { message: string } | null }>;
+      const { data, error } = await cloneRule("clone_bonus_rule_month", {
         _source_version_id: source.id, _store_id: scope === "global" ? null : scope, _year: year, _month: month,
       });
       if (error) throw new Error(error.message);

@@ -54,7 +54,6 @@ import {
 import { readMetasConsultivo } from "@/lib/metas-read.functions";
 import { parseWorkbookAuto, readGoalWorkbook, normalize, type AutoImportedRow, type AutoImportResult } from "@/lib/goal-import";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import * as XLSX from "xlsx";
 
 export const Route = createFileRoute("/_authenticated/remuneracao/mensal/metas")({
   head: () => ({

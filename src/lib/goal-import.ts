@@ -89,8 +89,12 @@ export function readGoalWorkbook(buffer: ArrayBuffer): any {
     grid.push(row);
   });
 
+  const period = doc.body.textContent?.match(/PER[IÍ]ODO:\s*\d{1,2}\/(\d{1,2})\/(\d{4})/i);
+  const sheetName = period?.[1] && period[2]
+    ? `${MONTHS[Number(period[1]) - 1]?.slice(0, 3) ?? period[1]}-${period[2]}`
+    : "Relatório";
   const worksheet = XLSX.utils.aoa_to_sheet(grid);
-  return { SheetNames: ["Relatório"], Sheets: { Relatório: worksheet } };
+  return { SheetNames: [sheetName], Sheets: { [sheetName]: worksheet } };
 }
 
 export type AutoImportResult = {
@@ -447,7 +451,7 @@ export function parseWorkbookAuto(
         }
 
         if (nh === "nome" || nh === "loja" || nh.includes("nome") || nh.includes("loja") || nh.includes("unidade")) {
-          if (nomeLojaCol === -1 || nh === "nome" || nh === "loja") nomeLojaCol = idx;
+          if (nomeLojaCol === -1 || nh === "nome" || nh === "loja" || nh.endsWith(" nome")) nomeLojaCol = idx;
         }
 
         if ((nh === "mes" || nh === "periodo" || nh === "competencia" || nh === "data" || nh.startsWith("mes ")) && !nh.includes("total") && !nh.includes("faturamento")) {
@@ -472,7 +476,9 @@ export function parseWorkbookAuto(
           nh === "taxa de entrega" ||
           nh === "taxa entrega" ||
           nh === "fat taxa de entrega" ||
-          nh === "fat taxa entrega";
+          nh === "fat taxa entrega" ||
+          nh.startsWith("taxa de entrega ") ||
+          nh.startsWith("taxa de servico ");
         if (isServiceFee) taxaServicoCol = idx;
 
         // Faturamento Realizado (prioritizes "faturamento real", "realizado", "total do mes", "venda offline")
