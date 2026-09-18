@@ -91,7 +91,10 @@ async function readPdf(file: File) {
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
     const page = await document.getPage(pageNumber);
     const content = await page.getTextContent();
-    const items = content.items.filter(isPdfTextItem).filter((item) => Boolean(item.str.trim()));
+    const items: PdfTextItem[] = [];
+    for (const item of content.items) {
+      if (isPdfTextItem(item) && item.str.trim()) items.push(item);
+    }
     const lines = new Map<number, PdfTextItem[]>();
     for (const item of items) {
       const y = Math.round(item.transform[5] ?? 0);

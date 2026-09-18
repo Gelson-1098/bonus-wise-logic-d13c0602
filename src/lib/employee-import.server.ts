@@ -27,7 +27,13 @@ export async function importEmployees(supabase: SupabaseLike, rows: ImportRow[])
   const registrations = new Set((existing ?? []).map((row) => normalize(row.registration)).filter(Boolean));
   const cpfs = new Set((existing ?? []).map((row) => digits(row.cpf)).filter(Boolean));
   const nameStores = new Set((existing ?? []).map((row) => `${normalize(row.full_name)}|${row.store_id}`));
-  const accepted: ImportRow[] = [];
+  const accepted: Array<{
+    full_name: string;
+    store_id: string;
+    position_id: string;
+    registration: string | null;
+    cpf: string | null;
+  }> = [];
   let skipped = 0;
 
   for (const row of rows) {
