@@ -509,7 +509,7 @@ export function parseWorkbookAuto(
 
       // Fallback genérico: cabeçalho do mês ilegível (ex.: acentuação corrompida em .xls).
       // Detecta a coluna de período pelos próprios dados (JAN/2026, Jun-26, datas...).
-      if (mesCol === -1) {
+      if (mesCol === -1 && !sheetMonthObj.month) {
         const maxCols = Math.max(...rawRows.slice(headerRowIdx + 1).map((rr) => (Array.isArray(rr) ? rr.length : 0)), 0);
         let bestCol = -1;
         let bestHits = 0;
