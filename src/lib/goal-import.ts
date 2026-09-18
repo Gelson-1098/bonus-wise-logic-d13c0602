@@ -33,6 +33,8 @@ export type AutoImportedRow = {
   code: string | null;
   month: number;
   year: number;
+  receitaLiquida: number | null;
+  taxaServico: number | null;
   faturamentoRealizado: number | null;
   faturamentoOrcado: number | null;
   faturamentoBaseAnoAnterior: number | null;
@@ -43,6 +45,57 @@ export type AutoImportedRow = {
   resolutionStatus: ResolutionStatus;
   resolutionReason: string;
 };
+
+export function readGoalWorkbook(buffer: ArrayBuffer): any {
+  const bytes = new Uint8Array(buffer);
+  const sample = new TextDecoder("windows-1252").decode(bytes.slice(0, Math.min(bytes.length, 4096)));
+  if (!/<html[\s>]/i.test(sample) && !/<table[\s>]/i.test(sample)) {
+    return XLSX.read(buffer, { cellDates: true, raw: true });
+  }
+
+  const html = new TextDecoder("windows-1252").decode(bytes);
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const tables = Array.from(doc.querySelectorAll("table"));
+  const table = tables
+    .map((candidate) => ({ candidate, cells: candidate.querySelectorAll("td,th").length }))
+    .sort((a, b) => b.cells - a.cells)[0]?.candidate;
+  if (!table) throw new Error("Nenhuma tabela foi encontrada no arquivo.");
+
+  const grid: unknown[][] = [];
+  const occupied = new Map<string, string>();
+  Array.from(table.querySelectorAll(":scope > tbody > tr, :scope > tr")).forEach((tr, rowIndex) => {
+    const row: unknown[] = [];
+    let columnIndex = 0;
+    const fillOccupied = () => {
+      while (occupied.has(`${rowIndex}:${columnIndex}`)) {
+        row[columnIndex] = occupied.get(`${rowIndex}:${columnIndex}`) ?? "";
+        columnIndex += 1;
+      }
+    };
+    Array.from(tr.querySelectorAll(":scope > td, :scope > th")).forEach((cell) => {
+      fillOccupied();
+      const value = cell.textContent?.replace(/\u00a0/g, " ").trim() ?? "";
+      const colspan = Math.max(1, Number(cell.getAttribute("colspan") ?? 1));
+      const rowspan = Math.max(1, Number(cell.getAttribute("rowspan") ?? 1));
+      for (let colOffset = 0; colOffset < colspan; colOffset += 1) {
+        row[columnIndex + colOffset] = value;
+        for (let rowOffset = 1; rowOffset < rowspan; rowOffset += 1) {
+          occupied.set(`${rowIndex + rowOffset}:${columnIndex + colOffset}`, value);
+        }
+      }
+      columnIndex += colspan;
+    });
+    fillOccupied();
+    grid.push(row);
+  });
+
+  const period = doc.body.textContent?.match(/PER[IÍ]ODO:\s*\d{1,2}\/(\d{1,2})\/(\d{4})/i);
+  const sheetName = period?.[1] && period[2]
+    ? `${MONTHS[Number(period[1]) - 1]?.slice(0, 3) ?? period[1]}-${period[2]}`
+    : "Relatório";
+  const worksheet = XLSX.utils.aoa_to_sheet(grid);
+  return { SheetNames: [sheetName], Sheets: { [sheetName]: worksheet } };
+}
 
 export type AutoImportResult = {
   rows: AutoImportedRow[];
@@ -369,6 +422,8 @@ export function parseWorkbookAuto(
       let nomeLojaCol = -1;
       let mesCol = -1;
       let fatRealCol = -1;
+      let receitaLiquidaCol = -1;
+      let taxaServicoCol = -1;
       let fatOrcadoCol = -1;
       let fatBaseCol = -1;
       let tcCol = -1;
@@ -391,17 +446,40 @@ export function parseWorkbookAuto(
         }
 
 
-        if (nh === "filial" || nh.includes("filial") || nh === "sigla" || nh === "codigo" || nh === "cod") {
+        if (nh === "filial" || nh.includes("filial") || nh === "sigla" || nh.endsWith(" sigla") || nh === "codigo" || nh === "cod") {
           if (filialCol === -1 || nh === "filial") filialCol = idx;
         }
 
         if (nh === "nome" || nh === "loja" || nh.includes("nome") || nh.includes("loja") || nh.includes("unidade")) {
-          if (nomeLojaCol === -1 || nh === "nome" || nh === "loja") nomeLojaCol = idx;
+          if (nomeLojaCol === -1 || nh === "nome" || nh === "loja" || nh.endsWith(" nome")) nomeLojaCol = idx;
         }
 
         if ((nh === "mes" || nh === "periodo" || nh === "competencia" || nh === "data" || nh.startsWith("mes ")) && !nh.includes("total") && !nh.includes("faturamento")) {
           mesCol = idx;
         }
+
+        const isNetRevenue =
+          nh === "receita liquida" ||
+          nh === "rec liquida" ||
+          nh === "receita liq" ||
+          nh === "faturamento liquido" ||
+          nh === "fat liquido" ||
+          nh.includes("valor liquido s tx entrega") ||
+          nh.includes("valor liquido sem taxa");
+        if (isNetRevenue) receitaLiquidaCol = idx;
+
+        const isServiceFee =
+          nh === "taxa de servico" ||
+          nh === "taxa servico" ||
+          nh === "fat taxa de servico" ||
+          nh === "faturamento taxa de servico" ||
+          nh === "taxa de entrega" ||
+          nh === "taxa entrega" ||
+          nh === "fat taxa de entrega" ||
+          nh === "fat taxa entrega" ||
+          nh.startsWith("taxa de entrega ") ||
+          nh.startsWith("taxa de servico ");
+        if (isServiceFee) taxaServicoCol = idx;
 
         // Faturamento Realizado (prioritizes "faturamento real", "realizado", "total do mes", "venda offline")
         if (nh.includes("faturamento real") || nh.includes("realizado") || nh.includes("total do mes") || nh.includes("venda offline")) {
@@ -431,7 +509,7 @@ export function parseWorkbookAuto(
 
       // Fallback genérico: cabeçalho do mês ilegível (ex.: acentuação corrompida em .xls).
       // Detecta a coluna de período pelos próprios dados (JAN/2026, Jun-26, datas...).
-      if (mesCol === -1) {
+      if (mesCol === -1 && !sheetMonthObj.month) {
         const maxCols = Math.max(...rawRows.slice(headerRowIdx + 1).map((rr) => (Array.isArray(rr) ? rr.length : 0)), 0);
         let bestCol = -1;
         let bestHits = 0;
@@ -501,7 +579,16 @@ export function parseWorkbookAuto(
         }
         if (!month) continue;
 
-        const realFat = fatRealCol >= 0 ? parseSmartNumber(row[fatRealCol]) : null;
+        const receitaLiquida = receitaLiquidaCol >= 0 ? parseSmartNumber(row[receitaLiquidaCol]) : null;
+        const taxaServico = taxaServicoCol >= 0 ? parseSmartNumber(row[taxaServicoCol]) : null;
+        const separatedComponentsFound = receitaLiquidaCol >= 0 || taxaServicoCol >= 0;
+        const realFat = separatedComponentsFound
+          ? receitaLiquida === null && taxaServico === null
+            ? null
+            : Number(receitaLiquida ?? 0) + Number(taxaServico ?? 0)
+          : fatRealCol >= 0
+            ? parseSmartNumber(row[fatRealCol])
+            : null;
         const orcadoFat = fatOrcadoCol >= 0 ? parseSmartNumber(row[fatOrcadoCol]) : null;
         const baseFat = fatBaseCol >= 0 ? parseSmartNumber(row[fatBaseCol]) : null;
         const tc = tcCol >= 0 ? parseSmartNumber(row[tcCol]) : null;
@@ -543,6 +630,8 @@ export function parseWorkbookAuto(
           code: resolution.canonical?.code ?? null,
           month,
           year,
+          receitaLiquida: separatedComponentsFound ? receitaLiquida : realFat,
+          taxaServico: separatedComponentsFound ? taxaServico : null,
           faturamentoRealizado: realFat,
           faturamentoOrcado: orcadoFat,
           faturamentoBaseAnoAnterior: baseFat,
