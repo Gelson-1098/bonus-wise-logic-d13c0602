@@ -58,6 +58,36 @@ function rowsFromMatrix(matrix: unknown[][], offset = 0): EmployeeImportSourceRo
   });
 }
 
+function rowsFromPdfItems(items: PdfTextItem[], offset: number) {
+  const normalized = items.map((item) => ({
+    text: text(item.str),
+    key: normalizeKey(item.str),
+    x: item.transform[4] ?? 0,
+    y: item.transform[5] ?? 0,
+  }));
+  const headers = (["fullName", "store", "position", "registration", "cpf"] as Column[]).flatMap((column) => {
+    const item = normalized.find((candidate) => HEADER_ALIASES[column].includes(candidate.key));
+    return item ? [{ column, x: item.x, y: item.y }] : [];
+  });
+  if (!headers.some((header) => header.column === "fullName") || !headers.some((header) => header.column === "store") || !headers.some((header) => header.column === "position")) return [];
+  const headerY = headers[0]!.y;
+  const dataLines = new Map<number, typeof normalized>();
+  for (const item of normalized.filter((candidate) => candidate.y < headerY - 2)) {
+    const y = [...dataLines.keys()].find((candidate) => Math.abs(candidate - item.y) <= 2) ?? Math.round(item.y);
+    dataLines.set(y, [...(dataLines.get(y) ?? []), item]);
+  }
+  const sortedHeaders = headers.sort((a, b) => a.x - b.x);
+  const matrix: unknown[][] = [sortedHeaders.map((header) => HEADER_ALIASES[header.column][0])];
+  for (const [, line] of [...dataLines.entries()].sort(([a], [b]) => b - a)) {
+    const row = sortedHeaders.map((header, index) => {
+      const nextX = sortedHeaders[index + 1]?.x ?? Number.POSITIVE_INFINITY;
+      return line.filter((item) => item.x >= header.x - 3 && item.x < nextX - 3).sort((a, b) => a.x - b.x).map((item) => item.text).join(" ");
+    });
+    matrix.push(row);
+  }
+  return rowsFromMatrix(matrix, offset);
+}
+
 async function readExcel(file: File) {
   const XLSX = await import("xlsx");
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", raw: true });
@@ -96,16 +126,7 @@ async function readPdf(file: File) {
     for (const item of content.items) {
       if (isPdfTextItem(item) && item.str.trim()) items.push(item);
     }
-    const lines = new Map<number, PdfTextItem[]>();
-    for (const item of items) {
-      const y = Math.round(item.transform[5] ?? 0);
-      const currentY = [...lines.keys()].find((candidate) => Math.abs(candidate - y) <= 2) ?? y;
-      lines.set(currentY, [...(lines.get(currentY) ?? []), item]);
-    }
-    const matrix = [...lines.entries()]
-      .sort(([a], [b]) => b - a)
-      .map(([, line]) => line.sort((a, b) => (a.transform[4] ?? 0) - (b.transform[4] ?? 0)).map((item) => item.str));
-    rows.push(...rowsFromMatrix(matrix, rows.length));
+    rows.push(...rowsFromPdfItems(items, rows.length));
   }
   return rows;
 }
