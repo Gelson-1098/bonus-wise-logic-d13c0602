@@ -1,5 +1,4 @@
 import { normalizeKey } from "@/lib/store-registry";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 
 export type EmployeeImportSourceRow = {
   rowNumber: number;
@@ -85,6 +84,7 @@ function isPdfTextItem(item: unknown): item is PdfTextItem {
 
 async function readPdf(file: File) {
   const pdfjs = await import("pdfjs-dist");
+  const { default: pdfWorkerUrl } = await import("pdfjs-dist/build/pdf.worker.mjs?url");
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
   const document = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   const rows: EmployeeImportSourceRow[] = [];
