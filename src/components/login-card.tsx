@@ -6,7 +6,6 @@ import { lovable } from "@/integrations/lovable/index";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function LoginCard() {
   const navigate = useNavigate();
@@ -62,17 +61,16 @@ export function LoginCard() {
   }
 
   return (
-    <Card className="w-full max-w-sm border-border/60 shadow-xl">
-      <CardHeader className="pb-4 text-center space-y-1">
-        <CardTitle className="text-3xl font-black tracking-tight">PRIME</CardTitle>
-        <CardDescription className="text-xs text-muted-foreground">
-          Gestão de metas e performance
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
+    <section className="w-full max-w-[390px] rounded-2xl border border-black/[0.07] bg-white/95 px-7 py-8 shadow-[0_24px_70px_-38px_rgba(15,23,42,0.4)] backdrop-blur sm:px-9 sm:py-10">
+      <header className="mb-8 text-center">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-neutral-400">DEX Invest</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-[0.14em] text-neutral-900">PRISMA</h1>
+        <p className="mt-2 text-sm text-neutral-500">Acesso corporativo</p>
+      </header>
+      <div>
+        <div className="space-y-5">
           <div className="space-y-1.5">
-            <Label htmlFor="email" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">E-mail</Label>
+            <Label htmlFor="email" className="text-xs font-medium text-neutral-600">E-mail</Label>
             <Input
               id="email"
               type="email"
@@ -80,11 +78,12 @@ export function LoginCard() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && signIn()}
-              className="h-11"
+              autoComplete="email"
+              className="h-12 rounded-xl border-neutral-200 bg-neutral-50/70 px-4 shadow-none focus-visible:border-neutral-400 focus-visible:ring-neutral-300"
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="senha" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Senha</Label>
+            <Label htmlFor="senha" className="text-xs font-medium text-neutral-600">Senha</Label>
             <Input
               id="senha"
               type="password"
@@ -92,29 +91,30 @@ export function LoginCard() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && signIn()}
-              className="h-11"
+              autoComplete="current-password"
+              className="h-12 rounded-xl border-neutral-200 bg-neutral-50/70 px-4 shadow-none focus-visible:border-neutral-400 focus-visible:ring-neutral-300"
             />
           </div>
-          <Button className="w-full h-11 text-sm font-bold tracking-wide uppercase" disabled={loading} onClick={signIn}>
-            {loading ? "Entrando…" : "ENTRAR"}
+          <Button className="h-12 w-full rounded-xl bg-neutral-900 text-sm font-semibold text-white shadow-none hover:bg-neutral-800" disabled={loading} onClick={signIn}>
+            {loading ? "Entrando…" : "Entrar"}
           </Button>
           <button
             type="button"
             onClick={forgotPassword}
             disabled={recovering}
-            className="w-full text-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            className="w-full text-center text-xs text-neutral-500 underline-offset-4 transition-colors hover:text-neutral-900 hover:underline"
           >
             {recovering ? "Enviando…" : "Esqueci minha senha"}
           </button>
         </div>
 
-        <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="h-px flex-1 bg-border" /> ou <span className="h-px flex-1 bg-border" />
+        <div className="my-6 flex items-center gap-3 text-[11px] uppercase tracking-widest text-neutral-400">
+          <span className="h-px flex-1 bg-neutral-200" /> ou <span className="h-px flex-1 bg-neutral-200" />
         </div>
-        <Button variant="outline" className="w-full h-10" onClick={google}>
+        <Button variant="outline" className="h-11 w-full rounded-xl border-neutral-200 bg-white text-neutral-700 shadow-none hover:bg-neutral-50" onClick={google}>
           Continuar com Google
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
