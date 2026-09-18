@@ -8,8 +8,8 @@
 
 - [x] Corrigir composição do faturamento para metas: receita líquida + taxa de serviço/entrega; validar com RelatorioConsolidadoVenda_1_1.xls sem alterar outros módulos.
 ## Login e importação de funcionários
-- [ ] Simplificar visualmente somente as telas inicial e de acesso
-- [ ] Importar PDF/Excel e identificar nome, loja e cargo
-- [ ] Permitir conferência e correção antes de salvar
-- [ ] Impedir duplicatas e validar persistência após atualização
+- [x] Simplificar visualmente somente as telas inicial e de acesso
+- [x] Importar PDF/Excel e identificar nome, loja e cargo
+- [x] Permitir conferência e correção antes de salvar
+- [x] Impedir duplicatas e validar persistência após atualização
 
