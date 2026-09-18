@@ -583,7 +583,9 @@ export function parseWorkbookAuto(
         const taxaServico = taxaServicoCol >= 0 ? parseSmartNumber(row[taxaServicoCol]) : null;
         const separatedComponentsFound = receitaLiquidaCol >= 0 || taxaServicoCol >= 0;
         const realFat = separatedComponentsFound
-          ? Number(receitaLiquida ?? 0) + Number(taxaServico ?? 0)
+          ? receitaLiquida === null && taxaServico === null
+            ? null
+            : Number(receitaLiquida ?? 0) + Number(taxaServico ?? 0)
           : fatRealCol >= 0
             ? parseSmartNumber(row[fatRealCol])
             : null;
