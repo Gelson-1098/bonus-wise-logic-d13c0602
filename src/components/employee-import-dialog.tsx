@@ -12,7 +12,7 @@ import { saveEmployeeImport } from "@/lib/employee-import.functions";
 import { readEmployeeImport, type EmployeeImportSourceRow } from "@/lib/employee-import";
 import { findDbStore, normalizeKey, resolveStore } from "@/lib/store-registry";
 
-type Store = { id: string; name: string; code?: string | null };
+type Store = { id: string; name: string; code: string | null };
 type Position = { id: string; name: string; active?: boolean };
 type ExistingEmployee = { full_name: string; store_id: string; registration?: string | null; cpf?: string | null };
 type ReviewRow = EmployeeImportSourceRow & { id: string; storeId: string; positionId: string };
