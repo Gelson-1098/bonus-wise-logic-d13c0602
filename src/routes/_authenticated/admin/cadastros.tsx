@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listPositionsBasic } from "@/lib/rules.functions";
@@ -21,6 +21,10 @@ import { brl } from "@/lib/format";
 import { EmployeeImportDialog } from "@/components/employee-import-dialog";
 
 export const Route = createFileRoute("/_authenticated/admin/cadastros")({
+  beforeLoad: async () => {
+    const { data, error } = await supabase.rpc("is_master");
+    if (error || data !== true) throw redirect({ to: "/remuneracao/mensal/painel" });
+  },
   head: () => ({
     meta: [
       { title: "Cadastros | PRISMA" },

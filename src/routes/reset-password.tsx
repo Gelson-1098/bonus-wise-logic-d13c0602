@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { completeRequiredPasswordChange } from "@/lib/password.functions";
+import { recoveryPasswordSchema } from "@/lib/users-schemas";
 
 export const Route = createFileRoute("/reset-password")({
   head: () => ({
@@ -32,18 +35,17 @@ function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+  const complete = useServerFn(completeRequiredPasswordChange);
 
   async function submit() {
-    if (password.length < 8) {
-      toast.error("A senha deve ter ao menos 8 caracteres.");
-      return;
-    }
-    if (password !== confirm) {
-      toast.error("As senhas não coincidem.");
+    const parsed = recoveryPasswordSchema.safeParse({ password, confirm_password: confirm });
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? "Revise as senhas informadas.");
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
+    const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+    if (!error) await complete({});
     setLoading(false);
     if (error) {
       toast.error("Não foi possível redefinir a senha", { description: error.message });

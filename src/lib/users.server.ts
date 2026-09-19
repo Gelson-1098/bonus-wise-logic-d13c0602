@@ -80,11 +80,12 @@ export type ManagedUser = {
   store_ids: string[];
   last_sign_in_at: string | null;
   created_at: string | null;
+  must_change_password: boolean;
 };
 
 export async function listManagedUsers(): Promise<ManagedUser[]> {
   const [profiles, roles, stores, authList] = await Promise.all([
-    supabaseAdmin.from("profiles").select("id,full_name,email,active,created_at"),
+    supabaseAdmin.from("profiles").select("id,full_name,email,active,created_at,must_change_password"),
     supabaseAdmin.from("user_roles").select("user_id,role"),
     supabaseAdmin.from("user_stores").select("user_id,store_id"),
     supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
@@ -110,6 +111,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
     store_ids: storesBy.get(p.id) ?? [],
     last_sign_in_at: lastBy.get(p.id) ?? null,
     created_at: p.created_at ?? null,
+    must_change_password: p.must_change_password ?? false,
   }));
 }
 
@@ -210,16 +212,42 @@ export async function createManagedUser(
   return { user_id: userId, email: input.email, role: input.role, store_ids: storeIds };
 }
 
-export async function renameManagedUser(userId: string, fullName: string, actor: ActorInfo) {
+export async function updateManagedUser(
+  userId: string,
+  fullName: string,
+  email: string,
+  actor: ActorInfo,
+) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const { data: before, error: readError } = await supabaseAdmin
+    .from("profiles")
+    .select("full_name,email")
+    .eq("id", userId)
+    .maybeSingle();
+  if (readError || !before) throw new Error("Usuário não encontrado.");
+
+  if ((before.email ?? "").toLowerCase() !== normalizedEmail) {
+    const authUpdate = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      email: normalizedEmail,
+      email_confirm: true,
+    });
+    if (authUpdate.error) throw new Error(friendlyAuthError(authUpdate.error.message));
+  }
+
   const { error } = await supabaseAdmin
     .from("profiles")
-    .update({ full_name: fullName })
+    .update({ full_name: fullName, email: normalizedEmail })
     .eq("id", userId);
   if (error) throw new Error("Não foi possível atualizar o usuário.");
-  await supabaseAdmin.auth.admin.updateUserById(userId, { user_metadata: { full_name: fullName } });
-  await audit(actor, "USER_UPDATED", userId, "Nome do usuário atualizado.", {
-    field: "full_name",
-    new_value: fullName,
+  const metadataUpdate = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    user_metadata: { full_name: fullName },
+  });
+  if (metadataUpdate.error) throw new Error("Não foi possível atualizar o nome no acesso.");
+
+  await audit(actor, "USER_UPDATED", userId, "Nome e e-mail do usuário atualizados.", {
+    field: "profile",
+    old_value: JSON.stringify({ full_name: before.full_name, email: before.email }),
+    new_value: JSON.stringify({ full_name: fullName, email: normalizedEmail }),
   });
 }
 
@@ -284,11 +312,76 @@ export async function setManagedUserStores(userId: string, storeIds: string[], a
   });
 }
 
-export async function resetManagedUserPassword(userId: string, actor: ActorInfo) {
-  const password = await readDefaultPassword();
-  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
-  if (error) throw new Error(friendlyAuthError(error.message));
-  await audit(actor, "USER_PASSWORD_RESET", userId, "Senha redefinida para a senha padrão atual.");
+export async function startManagedUserPasswordReset(userId: string, actor: ActorInfo) {
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .select("email,active")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError || !profile?.email) throw new Error("Usuário não encontrado ou sem e-mail.");
+  if (!profile.active) throw new Error("Ative o usuário antes de iniciar a recuperação de senha.");
+
+  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+    type: "recovery",
+    email: profile.email,
+    options: { redirectTo: "/reset-password" },
+  });
+  if (error || !data.properties?.action_link) {
+    throw new Error("Não foi possível iniciar a recuperação de senha.");
+  }
+
+  const flag = await supabaseAdmin
+    .from("profiles")
+    .update({ must_change_password: true })
+    .eq("id", userId);
+  if (flag.error) throw new Error("Não foi possível marcar a troca obrigatória de senha.");
+
+  await audit(actor, "USER_PASSWORD_RESET_REQUESTED", userId, "Recuperação administrativa de senha iniciada.");
+  return { recovery_link: data.properties.action_link };
+}
+
+export async function diagnoseManagedUser(userId: string) {
+  const [{ data: profile }, { data: roles }, { data: stores }, authResult] = await Promise.all([
+    supabaseAdmin.from("profiles").select("id,email,active,must_change_password").eq("id", userId).maybeSingle(),
+    supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
+    supabaseAdmin.from("user_stores").select("store_id,stores(name,active)").eq("user_id", userId),
+    supabaseAdmin.auth.admin.getUserById(userId),
+  ]);
+  const authUser = authResult.data.user;
+  const role = roles?.[0]?.role ?? null;
+  const issues: string[] = [];
+  if (!authUser) issues.push("Conta de autenticação inexistente.");
+  if (!authUser?.email_confirmed_at) issues.push("E-mail não confirmado.");
+  if (authUser?.banned_until && new Date(authUser.banned_until) > new Date()) issues.push("Conta bloqueada.");
+  if (!profile) issues.push("Perfil inexistente.");
+  if (profile && !profile.active) issues.push("Perfil inativo.");
+  if (!role) issues.push("Papel não definido.");
+  if (role !== "master" && !stores?.length) issues.push("Nenhuma loja vinculada.");
+  return {
+    healthy: issues.length === 0,
+    auth_exists: !!authUser,
+    email_confirmed: !!authUser?.email_confirmed_at,
+    banned: !!authUser?.banned_until && new Date(authUser.banned_until) > new Date(),
+    profile_exists: !!profile,
+    profile_active: profile?.active ?? false,
+    role,
+    store_count: stores?.length ?? 0,
+    must_change_password: profile?.must_change_password ?? false,
+    issues,
+  };
+}
+
+export async function deleteManagedUser(userId: string, actor: ActorInfo) {
+  if (userId === actor.userId) throw new Error("Você não pode excluir o próprio acesso.");
+  await assertNotLastMaster(userId);
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle();
+  await audit(actor, "USER_DELETED", userId, `Acesso do usuário ${profile?.email ?? userId} excluído.`);
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+  if (error) throw new Error("Não foi possível excluir o usuário.");
 }
 
 const BAN_FOREVER = "876000h";

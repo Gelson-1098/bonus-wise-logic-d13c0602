@@ -180,7 +180,7 @@ export function AppSidebar() {
               variant="outline"
               className="mt-2 border-sidebar-border text-sidebar-foreground/80"
             >
-              {isMaster ? "Administrador" : "Gerente"}
+               {isMaster ? "Administrador" : access?.role === "treinador" ? "Treinador" : "Gerente"}
             </Badge>
           </div>
         )}
