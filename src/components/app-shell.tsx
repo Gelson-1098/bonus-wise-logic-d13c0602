@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Bell, ChevronRight, CircleHelp, LogOut, Search, Settings2, User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,6 +50,12 @@ export function PlatformShell({
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const crumbs = buildCrumbs(pathname);
   const access = useAuthorizationGate();
+
+  useEffect(() => {
+    if (access?.mustChangePassword && pathname !== "/alterar-senha") {
+      window.location.replace("/alterar-senha");
+    }
+  }, [access?.mustChangePassword, pathname]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -127,8 +133,10 @@ export function PlatformShell({
                     {access?.fullName ?? access?.email ?? "Usuário"}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link {...linkTo("/alterar-senha")}>
                     <User className="size-4" /> Perfil
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem>
                     <Settings2 className="size-4" /> Configurações
