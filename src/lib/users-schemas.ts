@@ -26,6 +26,7 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 export const updateUserSchema = z.object({
   user_id: z.string().uuid(),
   full_name: z.string().trim().min(3, "Informe o nome completo.").max(120),
+  email: z.string().trim().toLowerCase().email("E-mail inválido.").max(255),
 });
 
 export const updateRoleSchema = z.object({
@@ -39,6 +40,27 @@ export const updateStoresSchema = z.object({
 });
 
 export const userIdSchema = z.object({ user_id: z.string().uuid() });
+
+export const changePasswordSchema = z
+  .object({
+    current_password: z.string().min(1, "Informe a senha atual."),
+    password: z.string().min(8, "A nova senha deve ter ao menos 8 caracteres.").max(72),
+    confirm_password: z.string(),
+  })
+  .refine((value) => value.password === value.confirm_password, {
+    message: "As senhas não coincidem.",
+    path: ["confirm_password"],
+  });
+
+export const recoveryPasswordSchema = z
+  .object({
+    password: z.string().min(8, "A nova senha deve ter ao menos 8 caracteres.").max(72),
+    confirm_password: z.string(),
+  })
+  .refine((value) => value.password === value.confirm_password, {
+    message: "As senhas não coincidem.",
+    path: ["confirm_password"],
+  });
 
 export const defaultPasswordSchema = z.object({
   password: z

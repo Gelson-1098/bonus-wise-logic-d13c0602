@@ -29,6 +29,7 @@ export type NavUniverse = {
   to?: string | undefined;
   master?: boolean | undefined;
   items?: NavLeaf[] | undefined;
+  hidden?: boolean | undefined;
 };
 
 export const UNIVERSES: NavUniverse[] = [
@@ -44,6 +45,7 @@ export const UNIVERSES: NavUniverse[] = [
     label: "Operação",
     icon: Building2,
     base: "/operacao",
+    hidden: true,
     items: [
       { to: "/operacao/dashboard", label: "Dashboard" },
       { to: "/operacao/lojas", label: "Lojas" },
@@ -75,6 +77,7 @@ export const UNIVERSES: NavUniverse[] = [
     label: "KPI",
     icon: ChartNoAxesCombined,
     base: "/kpi",
+    hidden: true,
     items: [
       { to: "/kpi/dashboard", label: "Dashboard KPI" },
       { to: "/kpi/lojas", label: "Lojas" },
@@ -106,6 +109,7 @@ export const UNIVERSES: NavUniverse[] = [
     label: "Treinamento",
     icon: GraduationCap,
     base: "/treinamento",
+    hidden: true,
     items: [
       { to: "/treinamento/dashboard", label: "Dashboard" },
       { to: "/treinamento/treinamentos", label: "Treinamentos" },
@@ -121,6 +125,7 @@ export const UNIVERSES: NavUniverse[] = [
     label: "Avaliações",
     icon: Star,
     base: "/avaliacoes",
+    hidden: true,
     items: [
       { to: "/avaliacoes/dashboard", label: "Dashboard" },
       { to: "/avaliacoes/avaliacoes", label: "Avaliações" },
@@ -135,6 +140,7 @@ export const UNIVERSES: NavUniverse[] = [
     label: "Auditorias",
     icon: ClipboardCheck,
     base: "/auditorias",
+    hidden: true,
     items: [
       { to: "/auditorias/dashboard", label: "Dashboard" },
       { to: "/auditorias/loja", label: "Auditoria de Loja" },
@@ -150,6 +156,7 @@ export const UNIVERSES: NavUniverse[] = [
     label: "Relatórios",
     icon: BarChart3,
     base: "/relatorios",
+    hidden: true,
     items: [
       { to: "/relatorios/executivo", label: "Dashboard Executivo" },
       { to: "/relatorios/operacional", label: "Operacional" },
@@ -199,7 +206,7 @@ export function buildCrumbs(pathname: string): Crumb[] {
 }
 
 export function visibleUniverses(isMaster: boolean): NavUniverse[] {
-  return UNIVERSES.filter((u) => !u.master || isMaster).map((u) => ({
+  return UNIVERSES.filter((u) => !u.hidden && (!u.master || isMaster)).map((u) => ({
     ...u,
     items: u.items?.filter((i) => !i.master || isMaster),
   }));

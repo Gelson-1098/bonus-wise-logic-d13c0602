@@ -22,13 +22,18 @@ export function LoginCard() {
   async function signIn() {
     setLoading(true);
     const cleanEmail = email.trim().toLowerCase();
-    const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
     setLoading(false);
     if (error) {
       toast.error("Não foi possível entrar", { description: error.message });
       return;
     }
-    navigate({ to: "/dashboard" });
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("must_change_password")
+      .eq("id", data.user.id)
+      .maybeSingle();
+    navigate({ to: profile?.must_change_password ? "/alterar-senha" : "/dashboard" });
   }
 
   async function forgotPassword() {

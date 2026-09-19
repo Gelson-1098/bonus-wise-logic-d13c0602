@@ -50,7 +50,7 @@ export const updateUser = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const m = await import("@/lib/users.server");
     const actor = await m.assertMaster(context.supabase);
-    await m.renameManagedUser(data.user_id, data.full_name, actor);
+    await m.updateManagedUser(data.user_id, data.full_name, data.email, actor);
     return { ok: true as const };
   });
 
@@ -80,7 +80,25 @@ export const resetUserPassword = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const m = await import("@/lib/users.server");
     const actor = await m.assertMaster(context.supabase);
-    await m.resetManagedUserPassword(data.user_id, actor);
+    return m.startManagedUserPasswordReset(data.user_id, actor);
+  });
+
+export const diagnoseUserAccess = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => userIdSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const m = await import("@/lib/users.server");
+    await m.assertMaster(context.supabase);
+    return m.diagnoseManagedUser(data.user_id);
+  });
+
+export const deleteUser = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => userIdSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const m = await import("@/lib/users.server");
+    const actor = await m.assertMaster(context.supabase);
+    await m.deleteManagedUser(data.user_id, actor);
     return { ok: true as const };
   });
 

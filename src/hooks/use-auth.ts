@@ -34,6 +34,7 @@ export type AccessInfo = {
   isMaster: boolean;
   role: AppRoleValue | null;
   active: boolean;
+  mustChangePassword: boolean;
   authorized: boolean;
   storeIds: string[];
 };
@@ -47,10 +48,11 @@ export function useAccess() {
     enabled: !!userId,
     staleTime: 60_000,
     queryFn: async () => {
+      if (!userId) throw new Error("Sessão não encontrada.");
       const [roles, stores, profile] = await Promise.all([
-        supabase.from("user_roles").select("role").eq("user_id", userId!),
-        supabase.from("user_stores").select("store_id").eq("user_id", userId!),
-        supabase.from("profiles").select("full_name,email,active").eq("id", userId!).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", userId),
+        supabase.from("user_stores").select("store_id").eq("user_id", userId),
+        supabase.from("profiles").select("full_name,email,active,must_change_password").eq("id", userId).maybeSingle(),
       ]);
       const role = ((roles.data ?? [])[0]?.role ?? null) as AppRoleValue | null;
       const active = (profile.data as { active?: boolean } | null)?.active ?? true;
@@ -61,6 +63,7 @@ export function useAccess() {
         isMaster: (roles.data ?? []).some((r) => r.role === "master"),
         role,
         active,
+        mustChangePassword: profile.data?.must_change_password ?? false,
         authorized: !!role && active,
         storeIds: (stores.data ?? []).map((s) => s.store_id),
       };
