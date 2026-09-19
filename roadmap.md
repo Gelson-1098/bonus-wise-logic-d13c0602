@@ -13,3 +13,8 @@
 - [x] Permitir conferência e correção antes de salvar
 - [x] Impedir duplicatas e validar persistência após atualização
 
+## Gestão de dados de Metas
+- [ ] Mapear persistência atual de metas e realizado
+- [ ] Implementar limpeza Master por ano, mês e loja opcional
+- [ ] Adicionar confirmação e atualização automática na tela de Metas
+- [ ] Validar isolamento entre lojas e períodos
