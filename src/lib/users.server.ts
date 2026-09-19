@@ -321,15 +321,6 @@ export async function startManagedUserPasswordReset(userId: string, actor: Actor
   if (profileError || !profile?.email) throw new Error("Usuário não encontrado ou sem e-mail.");
   if (!profile.active) throw new Error("Ative o usuário antes de iniciar a recuperação de senha.");
 
-  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-    type: "recovery",
-    email: profile.email,
-    options: { redirectTo: "/reset-password" },
-  });
-  if (error || !data.properties?.action_link) {
-    throw new Error("Não foi possível iniciar a recuperação de senha.");
-  }
-
   const flag = await supabaseAdmin
     .from("profiles")
     .update({ must_change_password: true })
@@ -337,7 +328,7 @@ export async function startManagedUserPasswordReset(userId: string, actor: Actor
   if (flag.error) throw new Error("Não foi possível marcar a troca obrigatória de senha.");
 
   await audit(actor, "USER_PASSWORD_RESET_REQUESTED", userId, "Recuperação administrativa de senha iniciada.");
-  return { recovery_link: data.properties.action_link };
+  return { email: profile.email };
 }
 
 export async function diagnoseManagedUser(userId: string) {

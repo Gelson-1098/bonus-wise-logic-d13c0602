@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   Copy,
   Eye,
+  Pencil,
+  Trash2,
   KeyRound,
   MoreHorizontal,
   RefreshCw,
@@ -56,9 +58,12 @@ import {
   activateUser,
   createUser,
   deactivateUser,
+  deleteUser,
+  diagnoseUserAccess,
   getDefaultPasswordStatus,
   listUsers,
   resetUserPassword,
+  updateUser,
   updateUserRole,
   updateUserStores,
 } from "@/lib/users.functions";
@@ -190,6 +195,9 @@ function UsuariosPage() {
   const setRole = useServerFn(updateUserRole);
   const setStores = useServerFn(updateUserStores);
   const resetPassword = useServerFn(resetUserPassword);
+  const update = useServerFn(updateUser);
+  const diagnose = useServerFn(diagnoseUserAccess);
+  const remove = useServerFn(deleteUser);
   const activate = useServerFn(activateUser);
   const deactivate = useServerFn(deactivateUser);
 
@@ -208,6 +216,19 @@ function UsuariosPage() {
   const [storesDialog, setStoresDialog] = useState<null | { userId: string; selected: string[] }>(
     null,
   );
+  const [editDialog, setEditDialog] = useState<null | { userId: string; fullName: string; email: string }>(null);
+  const [diagnosis, setDiagnosis] = useState<null | {
+    healthy: boolean;
+    auth_exists: boolean;
+    email_confirmed: boolean;
+    banned: boolean;
+    profile_exists: boolean;
+    profile_active: boolean;
+    role: string | null;
+    store_count: number;
+    must_change_password: boolean;
+    issues: string[];
+  }>(null);
 
   const [term, setTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("todos");
@@ -504,6 +525,15 @@ function UsuariosPage() {
                                 <Eye className="size-4" /> Visualizar
                               </DropdownMenuItem>
                               <DropdownMenuItem
+                                onClick={() => setEditDialog({
+                                  userId: u.id,
+                                  fullName: u.full_name ?? "",
+                                  email: u.email ?? "",
+                                })}
+                              >
+                                <Pencil className="size-4" /> Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                 onClick={() =>
                                   setStoresDialog({ userId: u.id, selected: u.store_ids })
                                 }
@@ -531,16 +561,35 @@ function UsuariosPage() {
                               ))}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
+                                onClick={async () => {
+                                  try {
+                                    setDiagnosis(await diagnose({ data: { user_id: u.id } }));
+                                  } catch (error) {
+                                    toast.error("Não foi possível diagnosticar o acesso.", {
+                                      description: error instanceof Error ? error.message : undefined,
+                                    });
+                                  }
+                                }}
+                              >
+                                <ShieldCheck className="size-4" /> Diagnóstico
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                 onClick={() =>
                                   setConfirm({
                                     title: "Redefinir senha",
                                     description:
                                       "Redefinir a senha deste usuário para a senha padrão atual?",
-                                    run: () =>
-                                      runAction(
-                                        resetPassword({ data: { user_id: u.id } }),
-                                        "Senha redefinida para a senha padrão atual.",
-                                      ),
+                                      run: async () => {
+                                        const result = await resetPassword({ data: { user_id: u.id } });
+                                        const { error } = await supabase.auth.resetPasswordForEmail(result.email, {
+                                          redirectTo: `${window.location.origin}/reset-password`,
+                                        });
+                                        if (error) throw new Error("Não foi possível enviar o e-mail de recuperação.");
+                                        toast.success("Recuperação iniciada.", {
+                                          description: "O usuário receberá um link para definir uma nova senha.",
+                                        });
+                                        await queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+                                      },
                                   })
                                 }
                               >
@@ -580,6 +629,17 @@ function UsuariosPage() {
                                   <CheckCircle2 className="size-4" /> Ativar
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setConfirm({
+                                  title: "Excluir usuário",
+                                  description: "Esta ação remove somente o acesso, o perfil e os vínculos deste usuário. Ela não pode ser desfeita.",
+                                  run: () => runAction(remove({ data: { user_id: u.id } }), "Usuário excluído."),
+                                })}
+                              >
+                                <Trash2 className="size-4" /> Excluir
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>
@@ -763,6 +823,61 @@ function UsuariosPage() {
               Salvar
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editDialog} onOpenChange={(open) => !open && setEditDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar usuário</DialogTitle>
+            <DialogDescription>Atualize o nome e o e-mail de acesso.</DialogDescription>
+          </DialogHeader>
+          {editDialog && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-name">Nome</Label>
+                <Input id="edit-name" value={editDialog.fullName} onChange={(event) => setEditDialog({ ...editDialog, fullName: event.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-email">E-mail</Label>
+                <Input id="edit-email" type="email" value={editDialog.email} onChange={(event) => setEditDialog({ ...editDialog, email: event.target.value })} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialog(null)}>Cancelar</Button>
+            <Button onClick={async () => {
+              if (!editDialog) return;
+              await runAction(update({ data: {
+                user_id: editDialog.userId,
+                full_name: editDialog.fullName,
+                email: editDialog.email,
+              } }), "Usuário atualizado.");
+              setEditDialog(null);
+            }}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!diagnosis} onOpenChange={(open) => !open && setDiagnosis(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Diagnóstico de acesso</DialogTitle>
+            <DialogDescription>{diagnosis?.healthy ? "Acesso configurado corretamente." : "Foram encontradas pendências."}</DialogDescription>
+          </DialogHeader>
+          {diagnosis && (
+            <div className="grid gap-2 text-sm sm:grid-cols-2">
+              <p>Conta: <strong>{diagnosis.auth_exists ? "Encontrada" : "Ausente"}</strong></p>
+              <p>E-mail: <strong>{diagnosis.email_confirmed ? "Confirmado" : "Não confirmado"}</strong></p>
+              <p>Bloqueio: <strong>{diagnosis.banned ? "Bloqueado" : "Livre"}</strong></p>
+              <p>Perfil: <strong>{diagnosis.profile_exists && diagnosis.profile_active ? "Ativo" : "Pendente"}</strong></p>
+              <p>Papel: <strong>{diagnosis.role ? ROLE_LABEL[diagnosis.role as AppRoleValue] : "Não definido"}</strong></p>
+              <p>Lojas: <strong>{diagnosis.role === "master" ? "Acesso global" : diagnosis.store_count}</strong></p>
+              <p className="sm:col-span-2">Troca de senha: <strong>{diagnosis.must_change_password ? "Obrigatória" : "Não pendente"}</strong></p>
+              {diagnosis.issues.length > 0 && <ul className="sm:col-span-2 list-disc pl-5 text-destructive">{diagnosis.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}
+            </div>
+          )}
+          <DialogFooter><Button onClick={() => setDiagnosis(null)}>Fechar</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 

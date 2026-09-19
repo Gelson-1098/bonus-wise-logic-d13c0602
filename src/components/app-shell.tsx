@@ -135,7 +135,7 @@ export function PlatformShell({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link {...linkTo("/alterar-senha")}>
-                    <User className="size-4" /> Perfil
+                    <User className="size-4" /> Alterar senha
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem>
