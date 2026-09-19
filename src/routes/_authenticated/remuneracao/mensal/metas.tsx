@@ -15,6 +15,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
   Building2,
@@ -39,6 +49,7 @@ import {
   AlertCircle,
   CheckCircle2,
   HelpCircle,
+  Trash2,
 } from "lucide-react";
 import { brl, MONTHS, periodLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -50,6 +61,7 @@ import {
   updateStoreGoalManual,
   generateGoals,
   importRevenueHistory,
+  clearImportedGoalData,
 } from "@/lib/goals.functions";
 import { readMetasConsultivo } from "@/lib/metas-read.functions";
 import { parseWorkbookAuto, readGoalWorkbook, normalize, type AutoImportedRow, type AutoImportResult } from "@/lib/goal-import";
@@ -295,6 +307,7 @@ function MasterMetas() {
         <TabsTrigger value="orcamento">Orçamento de Metas (Matriz)</TabsTrigger>
         <TabsTrigger value="importar">Importar Planilha</TabsTrigger>
         <TabsTrigger value="config">Parâmetros de Crescimento</TabsTrigger>
+        <TabsTrigger value="gestao">Gestão de Dados</TabsTrigger>
       </TabsList>
       <TabsContent value="orcamento">
         <BudgetMatrixView
@@ -311,7 +324,146 @@ function MasterMetas() {
       <TabsContent value="config">
         <GrowthSettings />
       </TabsContent>
+      <TabsContent value="gestao">
+        <GoalDataManagement />
+      </TabsContent>
     </Tabs>
+  );
+}
+
+function GoalDataManagement() {
+  const qc = useQueryClient();
+  const clearData = useServerFn(clearImportedGoalData);
+  const { data: stores } = useStores();
+  const nowYear = new Date().getFullYear();
+  const [year, setYear] = useState(2026);
+  const [month, setMonth] = useState(9);
+  const [storeId, setStoreId] = useState("all");
+  const [pendingKind, setPendingKind] = useState<"metas" | "realizado" | null>(null);
+
+  const storeName = storeId === "all"
+    ? "Todas as Lojas"
+    : stores?.find((store) => store.id === storeId)?.name ?? "Loja selecionada";
+  const kindLabel = pendingKind === "metas" ? "Meta" : "Realizado";
+  const monthLabel = MONTHS[month - 1] ?? String(month);
+
+  const clearMutation = useMutation({
+    mutationFn: async (kind: "metas" | "realizado") =>
+      clearData({
+        data: {
+          kind,
+          year,
+          month,
+          store_id: storeId === "all" ? null : storeId,
+        },
+      }),
+    onSuccess: async (result) => {
+      setPendingKind(null);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["metas-consultivo", year] }),
+        qc.invalidateQueries({ queryKey: ["actuals-targets"] }),
+        qc.invalidateQueries({ queryKey: ["store-goals", year] }),
+      ]);
+      await qc.refetchQueries({ queryKey: ["metas-consultivo", year], type: "all" });
+
+      const count = result.kind === "metas"
+        ? result.goalsCleared
+        : result.actualsCleared + result.historyCleared;
+      toast.success(result.kind === "metas" ? "Metas limpas" : "Realizado limpo", {
+        description: count > 0
+          ? `${storeName} — ${monthLabel}/${year}.`
+          : `Nenhum dado encontrado em ${storeName} — ${monthLabel}/${year}.`,
+      });
+    },
+    onError: (error: Error) => {
+      setPendingKind(null);
+      toast.error("Não foi possível concluir a limpeza", { description: error.message });
+    },
+  });
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Gestão de Dados</CardTitle>
+          <CardDescription>Limpe somente os dados importados do período selecionado.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label>Ano</Label>
+              <Select value={String(year)} onValueChange={(value) => setYear(Number(value))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[nowYear - 1, nowYear, nowYear + 1].map((option) => (
+                    <SelectItem key={option} value={String(option)}>{option}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Mês</Label>
+              <Select value={String(month)} onValueChange={(value) => setMonth(Number(value))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MONTHS.map((name, index) => (
+                    <SelectItem key={name} value={String(index + 1)}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Loja</Label>
+              <Select value={storeId} onValueChange={setStoreId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as Lojas</SelectItem>
+                  {(stores ?? []).map((store) => (
+                    <SelectItem key={store.id} value={store.id}>{store.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3 border-t pt-5">
+            <Button variant="destructive" onClick={() => setPendingKind("metas")} disabled={clearMutation.isPending}>
+              <Trash2 className="mr-2 size-4" />
+              Limpar Metas
+            </Button>
+            <Button variant="destructive" onClick={() => setPendingKind("realizado")} disabled={clearMutation.isPending}>
+              <Trash2 className="mr-2 size-4" />
+              Limpar Realizado
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={pendingKind !== null} onOpenChange={(open) => !open && setPendingKind(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar limpeza</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você está limpando {kindLabel} de {storeName} — {monthLabel}/{year}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearMutation.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!pendingKind || clearMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (pendingKind) clearMutation.mutate(pendingKind);
+              }}
+            >
+              {clearMutation.isPending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Trash2 className="mr-2 size-4" />}
+              Confirmar limpeza
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

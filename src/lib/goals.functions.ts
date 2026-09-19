@@ -194,6 +194,13 @@ const importActualSchema = z.object({
   source_file: z.string().nullable().optional(),
 });
 
+const clearImportedDataSchema = z.object({
+  kind: z.enum(["metas", "realizado"]),
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+  store_id: z.string().uuid().nullable(),
+});
+
 /** Importa faturamento realizado do ano atual para apuração de atingimento. */
 export const importActualRevenue = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -262,6 +269,124 @@ export const importActualRevenue = createServerFn({ method: "POST" })
     });
 
     return { ok: true, count: updatedCount };
+  });
+
+/** Limpeza administrativa estritamente limitada a ano, mês e loja opcional. */
+export const clearImportedGoalData = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => clearImportedDataSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await assertMaster(supabase);
+
+    let storeName = "Todas as Lojas";
+    if (data.store_id) {
+      const { data: store, error: storeError } = await supabase
+        .from("stores")
+        .select("id,name")
+        .eq("id", data.store_id)
+        .maybeSingle();
+      if (storeError) throw new Error(storeError.message);
+      if (!store) throw new Error("Loja selecionada não encontrada.");
+      storeName = store.name;
+    }
+
+    if (data.kind === "metas") {
+      let goalsQuery = supabase
+        .from("store_goals")
+        .select("id")
+        .eq("year", data.year)
+        .eq("month", data.month);
+      if (data.store_id) goalsQuery = goalsQuery.eq("store_id", data.store_id);
+
+      const { data: goals, error: goalsError } = await goalsQuery;
+      if (goalsError) throw new Error(goalsError.message);
+      const goalIds = (goals ?? []).map((goal: { id: string }) => goal.id);
+
+      if (goalIds.length > 0) {
+        const { error: deleteError } = await supabase.from("store_goals").delete().in("id", goalIds);
+        if (deleteError) throw new Error(deleteError.message);
+      }
+
+      const { error: auditError } = await supabase.from("audit_logs").insert({
+        user_id: userId,
+        action: "limpeza_metas",
+        entity: "store_goals",
+        store_id: data.store_id,
+        field: `${data.year}-${String(data.month).padStart(2, "0")}`,
+        old_value: `${goalIds.length} meta(s)`,
+        new_value: "Sem meta",
+        description: `Limpeza de metas de ${storeName} em ${String(data.month).padStart(2, "0")}/${data.year}.`,
+      });
+      if (auditError) throw new Error(auditError.message);
+
+      return { ok: true, kind: data.kind, goalsCleared: goalIds.length, actualsCleared: 0, historyCleared: 0 };
+    }
+
+    let periodsQuery = supabase
+      .from("bonus_periods")
+      .select("id")
+      .eq("year", data.year)
+      .eq("month", data.month);
+    if (data.store_id) periodsQuery = periodsQuery.eq("store_id", data.store_id);
+
+    const { data: periods, error: periodsError } = await periodsQuery;
+    if (periodsError) throw new Error(periodsError.message);
+    const periodIds = (periods ?? []).map((period: { id: string }) => period.id);
+
+    let targetIds: string[] = [];
+    if (periodIds.length > 0) {
+      const { data: targets, error: targetsError } = await supabase
+        .from("store_targets")
+        .select("id")
+        .in("period_id", periodIds)
+        .or("revenue_actual.not.is.null,tc_actual.not.is.null");
+      if (targetsError) throw new Error(targetsError.message);
+      targetIds = (targets ?? []).map((target: { id: string }) => target.id);
+
+      if (targetIds.length > 0) {
+        const { error: resetError } = await supabase
+          .from("store_targets")
+          .update({ revenue_actual: null, tc_actual: null })
+          .in("id", targetIds);
+        if (resetError) throw new Error(resetError.message);
+      }
+    }
+
+    let historyQuery = supabase
+      .from("revenue_history")
+      .select("id")
+      .eq("year", data.year)
+      .eq("month", data.month);
+    if (data.store_id) historyQuery = historyQuery.eq("store_id", data.store_id);
+    const { data: history, error: historyError } = await historyQuery;
+    if (historyError) throw new Error(historyError.message);
+    const historyIds = (history ?? []).map((row: { id: string }) => row.id);
+
+    if (historyIds.length > 0) {
+      const { error: deleteHistoryError } = await supabase.from("revenue_history").delete().in("id", historyIds);
+      if (deleteHistoryError) throw new Error(deleteHistoryError.message);
+    }
+
+    const { error: auditError } = await supabase.from("audit_logs").insert({
+      user_id: userId,
+      action: "limpeza_realizado",
+      entity: "store_targets",
+      store_id: data.store_id,
+      field: `${data.year}-${String(data.month).padStart(2, "0")}`,
+      old_value: `${targetIds.length} realizado(s) · ${historyIds.length} histórico(s)`,
+      new_value: "Não lançado",
+      description: `Limpeza de faturamento realizado de ${storeName} em ${String(data.month).padStart(2, "0")}/${data.year}. Períodos preservados.`,
+    });
+    if (auditError) throw new Error(auditError.message);
+
+    return {
+      ok: true,
+      kind: data.kind,
+      goalsCleared: 0,
+      actualsCleared: targetIds.length,
+      historyCleared: historyIds.length,
+    };
   });
 
 async function generate(
