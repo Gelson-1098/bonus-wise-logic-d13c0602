@@ -14,7 +14,7 @@
 - [x] Impedir duplicatas e validar persistência após atualização
 
 ## Gestão de dados de Metas
-- [ ] Mapear persistência atual de metas e realizado
-- [ ] Implementar limpeza Master por ano, mês e loja opcional
-- [ ] Adicionar confirmação e atualização automática na tela de Metas
-- [ ] Validar isolamento entre lojas e períodos
+- [x] Mapear persistência atual de metas e realizado
+- [x] Implementar limpeza Master por ano, mês e loja opcional
+- [x] Adicionar confirmação e atualização automática na tela de Metas
+- [x] Validar isolamento entre lojas e períodos
