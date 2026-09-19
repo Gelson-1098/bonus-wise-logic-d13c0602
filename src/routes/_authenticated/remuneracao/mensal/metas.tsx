@@ -303,7 +303,7 @@ function MasterMetas() {
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-      <TabsList>
+      <TabsList className="h-auto flex-wrap justify-start">
         <TabsTrigger value="orcamento">Orçamento de Metas (Matriz)</TabsTrigger>
         <TabsTrigger value="importar">Importar Planilha</TabsTrigger>
         <TabsTrigger value="config">Parâmetros de Crescimento</TabsTrigger>
