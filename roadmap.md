@@ -18,3 +18,8 @@
 - [x] Implementar limpeza Master por ano, mês e loja opcional
 - [x] Adicionar confirmação e atualização automática na tela de Metas
 - [x] Validar isolamento entre lojas e períodos
+## Benefits persistence and WhatsApp copy
+- [ ] Audit current Benefits server functions, page mutations, and store authorization
+- [ ] Route Benefits reads/writes through authorized server functions with explicit database error handling
+- [ ] Add consolidated and individual WhatsApp clipboard actions using existing calculated values
+- [ ] Validate save, edit, deduplication, reload persistence, clipboard output, and unauthorized store rejection
