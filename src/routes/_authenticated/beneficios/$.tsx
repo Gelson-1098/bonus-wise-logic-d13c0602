@@ -362,7 +362,21 @@ export function BeneficiosPage() {
   }, [consolidatedMatrix]);
 
   const saveEntryMutation = useMutation({
-    mutationFn: (input: Parameters<typeof persistEntry>[0]["data"]) => persistEntry({ data: input }),
+    mutationFn: (input: {
+      id?: string;
+      storeName: string;
+      collaborator: string;
+      year: number;
+      month: number;
+      diasMes: number;
+      folgas: number;
+      valorVr: number;
+      vtDiarista: number;
+      vtMensalista: number;
+      aditivoVt: number;
+      aditivoVr: number;
+      obs: string;
+    }) => persistEntry({ data: input }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["benefit-entries"] });
       toast.success("Lançamento de benefício salvo com sucesso!");
