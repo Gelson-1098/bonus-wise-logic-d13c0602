@@ -7,6 +7,7 @@ import {
   Building2,
   Calendar,
   Clock,
+  Copy,
   Edit3,
   FileSpreadsheet,
   Gift,
@@ -58,7 +59,14 @@ import {
 } from "@/lib/benefits-types";
 import {
   computeBenefitCalculations,
+  deleteBenefitEntry,
+  getBenefitEntries,
+  getBenefitParameters,
+  getBenefitPeriodStatuses,
   resetBenefitsToSpreadsheetBaseline,
+  saveBenefitEntry,
+  saveBenefitParameters,
+  toggleBenefitPeriodStatus,
 } from "@/lib/benefits.functions";
 
 export const Route = createFileRoute("/_authenticated/beneficios/$")({
@@ -102,10 +110,97 @@ function storeSettingKey(year: number, storeName: string) {
   return `benefits_data_${year}__${normalizeName(storeName).replace(/[^a-z0-9]+/g, "_")}`;
 }
 
+async function copyText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Não foi possível copiar o resumo.");
+}
+
+function individualWhatsAppText(entry: BenefitEntry) {
+  const monthLabel = (MONTHS[(entry.month || 1) - 1] ?? "Mês").toUpperCase();
+  const additives = Number(entry.aditivoVr || 0) + Number(entry.aditivoVt || 0);
+  return [
+    `📋 BENEFÍCIOS — ${monthLabel}/${entry.year}`,
+    "",
+    `🏪 Loja: ${entry.storeName}`,
+    "",
+    `👤 Colaborador: ${entry.collaborator}`,
+    "",
+    `📅 Diárias trabalhadas: ${entry.diasDevidos}`,
+    "",
+    `🍽️ VR Total: ${brl(entry.totalVr)}`,
+    "",
+    `🚌 VT Total: ${brl(entry.totalVt)}`,
+    "",
+    `➕ Aditivos: ${brl(additives)}`,
+    "",
+    `💰 VALOR TOTAL: ${brl(entry.totalBeneficios)}`,
+  ].join("\n");
+}
+
+function consolidatedWhatsAppText(input: {
+  entries: BenefitEntry[];
+  storeName: string;
+  monthLabel: string;
+  year: number;
+  summary: { totalVr: number; totalVt: number; totalAditivos: number; totalBeneficios: number };
+}) {
+  const collaborators = input.entries.map((entry) => {
+    const additives = Number(entry.aditivoVr || 0) + Number(entry.aditivoVt || 0);
+    return [
+      `👤 ${entry.collaborator}`,
+      `📅 Diárias: ${entry.diasDevidos}`,
+      `🍽️ VR: ${brl(entry.totalVr)}`,
+      `🚌 VT: ${brl(entry.totalVt)}`,
+      `➕ Aditivos: ${brl(additives)}`,
+      `💰 Total: ${brl(entry.totalBeneficios)}`,
+    ].join("\n");
+  });
+
+  return [
+    `📋 BENEFÍCIOS CONSOLIDADO — ${input.monthLabel.toUpperCase()}/${input.year}`,
+    "",
+    `🏪 Loja: ${input.storeName}`,
+    "",
+    "━━━━━━━━━━━━━━",
+    "",
+    collaborators.join("\n\n"),
+    "",
+    "━━━━━━━━━━━━━━",
+    "",
+    "📊 TOTAIS DA LOJA",
+    "",
+    `🍽️ Total VR: ${brl(input.summary.totalVr)}`,
+    `🚌 Total VT: ${brl(input.summary.totalVt)}`,
+    `➕ Total Aditivos: ${brl(input.summary.totalAditivos)}`,
+    "",
+    `💰 TOTAL GERAL: ${brl(input.summary.totalBeneficios)}`,
+  ].join("\n");
+}
+
 export function BeneficiosPage() {
   const qc = useQueryClient();
   const { data: access } = useAccess();
   const isMaster = access?.isMaster ?? false;
+  const fetchEntries = useServerFn(getBenefitEntries);
+  const persistEntry = useServerFn(saveBenefitEntry);
+  const removeEntry = useServerFn(deleteBenefitEntry);
+  const fetchParameters = useServerFn(getBenefitParameters);
+  const persistParameters = useServerFn(saveBenefitParameters);
+  const fetchStatuses = useServerFn(getBenefitPeriodStatuses);
+  const persistStatus = useServerFn(toggleBenefitPeriodStatus);
 
   const [activeTab, setActiveTab] = useState<"lancamentos" | "consolidado" | "parametros">("lancamentos");
   const [year, setYear] = useState(2026);
@@ -119,78 +214,19 @@ export function BeneficiosPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
-  // Queries using client-side supabase directly (safe, reactive and authenticated)
   const entriesQuery = useQuery({
     queryKey: ["benefit-entries", year],
-    queryFn: async () => {
-      // Persistência por loja: cada loja grava a própria chave, evitando que um
-      // salvamento simultâneo sobrescreva os dados de outra unidade.
-      // A chave global antiga continua sendo lida como base histórica.
-      const { data, error } = await supabase
-        .from("app_settings")
-        .select("key,value")
-        .like("key", `benefits_data_${year}%`);
-
-      if (error) throw error;
-
-      const rows = data ?? [];
-      const legacy = rows.find((r) => r.key === `benefits_data_${year}`);
-      const perStore = rows.filter((r) => r.key !== `benefits_data_${year}`);
-
-      const overridden = new Set(perStore.map((r) => r.key));
-      const merged: BenefitEntry[] = [];
-
-      if (Array.isArray(legacy?.value)) {
-        for (const e of legacy!.value as BenefitEntry[]) {
-          if (!overridden.has(storeSettingKey(year, e.storeName))) merged.push(e);
-        }
-      }
-      for (const row of perStore) {
-        if (Array.isArray(row.value)) merged.push(...(row.value as BenefitEntry[]));
-      }
-
-      return merged.filter((e) => e.year === year);
-    },
+    queryFn: () => fetchEntries({ data: { year } }),
   });
 
   const paramsQuery = useQuery({
     queryKey: ["benefit-parameters"],
-    queryFn: async () => {
-      try {
-        const { data } = await supabase
-          .from("app_settings")
-          .select("value")
-          .eq("key", "benefit_parameters")
-          .maybeSingle();
-
-        if (data?.value && Array.isArray(data.value)) {
-          return data.value as BenefitParameter[];
-        }
-      } catch (err) {
-        console.warn("Could not load parameters, using default:", err);
-      }
-      return DEFAULT_BENEFIT_PARAMETERS;
-    },
+    queryFn: () => fetchParameters(),
   });
 
   const statusesQuery = useQuery({
     queryKey: ["benefit-statuses", year],
-    queryFn: async () => {
-      try {
-        const { data } = await supabase
-          .from("app_settings")
-          .select("value")
-          .eq("key", `benefits_period_statuses_${year}`)
-          .maybeSingle();
-
-        if (data?.value && typeof data.value === "object") {
-          return data.value as Record<string, "estimado" | "fechado">;
-        }
-      } catch (err) {
-        console.warn("Could not load period statuses:", err);
-      }
-      return {} as Record<string, "estimado" | "fechado">;
-    },
+    queryFn: () => fetchStatuses({ data: { year } }),
   });
 
   const rawEntries = entriesQuery.data ?? [];
@@ -330,69 +366,12 @@ export function BeneficiosPage() {
     return { totals, grandAnnual };
   }, [consolidatedMatrix]);
 
-  // Mutations using client-side supabase directly
   const saveEntryMutation = useMutation({
-    mutationFn: async (input: any) => {
-      const settingKey = storeSettingKey(year, input.storeName);
-      const currentList = allEntries.filter(
-        (e) => normalizeName(e.storeName) === normalizeName(input.storeName),
-      );
-
-      const calcs = computeBenefitCalculations({
-        diasMes: input.diasMes,
-        folgas: input.folgas,
-        valorVr: input.valorVr,
-        vtDiarista: input.vtDiarista,
-        vtMensalista: input.vtMensalista,
-        aditivoVt: input.aditivoVt,
-        aditivoVr: input.aditivoVr,
-      });
-
-      const entryId =
-        input.id ||
-        `ben-${input.storeName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${year}-${input.month}-${input.collaborator.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-
-      const newRecord: BenefitEntry = {
-        id: entryId,
-        storeName: input.storeName,
-        collaborator: input.collaborator.trim(),
-        year: input.year,
-        month: input.month,
-        diasMes: input.diasMes,
-        folgas: input.folgas,
-        diasDevidos: calcs.diasDevidos,
-        valorVr: input.valorVr,
-        totalVr: calcs.totalVr,
-        vtDiarista: input.vtDiarista,
-        vtMensalista: input.vtMensalista,
-        depositoDiario: calcs.depositoDiario,
-        totalVt: calcs.totalVt,
-        aditivoVt: input.aditivoVt,
-        aditivoVr: input.aditivoVr,
-        obs: (input.obs || "").trim(),
-        totalBeneficios: calcs.totalBeneficios,
-      };
-
-      const existingIdx = currentList.findIndex((e) => e.id === entryId);
-      if (existingIdx >= 0) {
-        currentList[existingIdx] = newRecord;
-      } else {
-        currentList.push(newRecord);
-      }
-
-      await supabase.from("app_settings").upsert({
-        key: settingKey,
-        value: currentList as any,
-        description: `Benefícios ${input.storeName} - ${year}`,
-        updated_at: new Date().toISOString(),
-      });
-
-      return newRecord;
-    },
-    onSuccess: () => {
+    mutationFn: (input: Parameters<typeof persistEntry>[0]["data"]) => persistEntry({ data: input }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["benefit-entries"] });
       toast.success("Lançamento de benefício salvo com sucesso!");
       setEditingEntry(null);
-      qc.invalidateQueries({ queryKey: ["benefit-entries"] });
     },
     onError: (err: any) => toast.error("Erro ao salvar lançamento", { description: err.message }),
   });
@@ -400,68 +379,37 @@ export function BeneficiosPage() {
   const deleteEntryMutation = useMutation({
     mutationFn: async (id: string) => {
       const target = allEntries.find((e) => e.id === id);
-      if (!target) return true;
-      const settingKey = storeSettingKey(year, target.storeName);
-      const filtered = allEntries.filter(
-        (e) => e.id !== id && normalizeName(e.storeName) === normalizeName(target.storeName),
-      );
-
-      await supabase.from("app_settings").upsert({
-        key: settingKey,
-        value: filtered as any,
-        description: `Benefícios ${target.storeName} - ${year}`,
-        updated_at: new Date().toISOString(),
-      });
-
-      return true;
+      if (!target) throw new Error("Lançamento não encontrado.");
+      return removeEntry({ data: { id, year: target.year, storeName: target.storeName } });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["benefit-entries"] });
       toast.success("Colaborador removido do período!");
       setDeletingId(null);
-      qc.invalidateQueries({ queryKey: ["benefit-entries"] });
     },
     onError: (err: any) => toast.error("Erro ao remover", { description: err.message }),
   });
 
   const toggleStatusMutation = useMutation({
-    mutationFn: async (newStatus: "estimado" | "fechado") => {
-      const settingKey = `benefits_period_statuses_${year}`;
-      const current = { ...periodStatuses };
-      current[`${selectedStore}-${month}`] = newStatus;
-
-      await supabase.from("app_settings").upsert({
-        key: settingKey,
-        value: current as any,
-        description: `Status de fechamento dos períodos de benefícios para ${year}`,
-        updated_at: new Date().toISOString(),
-      });
-
-      return newStatus;
-    },
-    onSuccess: (newStatus) => {
+    mutationFn: (newStatus: "estimado" | "fechado") =>
+      persistStatus({ data: { year, month, storeName: selectedStore, status: newStatus } }),
+    onSuccess: async (result) => {
+      await qc.invalidateQueries({ queryKey: ["benefit-statuses"] });
+      const newStatus = result.status;
       toast.success(
         newStatus === "fechado"
           ? `Mês ${MONTHS[(month || 1) - 1] ?? "Mês"} de ${selectedStore} FECHADO!`
           : `Mês ${MONTHS[(month || 1) - 1] ?? "Mês"} de ${selectedStore} REABERTO como ESTIMADO!`
       );
-      qc.invalidateQueries({ queryKey: ["benefit-statuses"] });
     },
     onError: (err: any) => toast.error("Erro ao alterar status", { description: err.message }),
   });
 
   const saveParamsMutation = useMutation({
-    mutationFn: async (newParams: BenefitParameter[]) => {
-      await supabase.from("app_settings").upsert({
-        key: "benefit_parameters",
-        value: newParams as any,
-        description: "Parâmetros e regras de VR e VT por região e loja",
-        updated_at: new Date().toISOString(),
-      });
-      return true;
-    },
-    onSuccess: () => {
+    mutationFn: (newParams: BenefitParameter[]) => persistParameters({ data: { parameters: newParams } }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["benefit-parameters"] });
       toast.success("Parâmetros de benefícios salvos com sucesso!");
-      qc.invalidateQueries({ queryKey: ["benefit-parameters"] });
     },
     onError: (err: any) => toast.error("Erro ao salvar parâmetros", { description: err.message }),
   });
