@@ -53,7 +53,6 @@ import {
 import { brl, MONTHS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
-  DEFAULT_BENEFIT_PARAMETERS,
   type BenefitEntry,
   type BenefitParameter,
 } from "@/lib/benefits-types";
@@ -104,10 +103,6 @@ function normalizeName(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
-}
-
-function storeSettingKey(year: number, storeName: string) {
-  return `benefits_data_${year}__${normalizeName(storeName).replace(/[^a-z0-9]+/g, "_")}`;
 }
 
 async function copyText(text: string) {
@@ -467,6 +462,38 @@ export function BeneficiosPage() {
 
   const currentMonthLabel = MONTHS[(month || 1) - 1] ?? "Mês";
 
+  async function handleCopyIndividual(entry: BenefitEntry) {
+    try {
+      await copyText(individualWhatsAppText(entry));
+      toast.success("Resumo copiado para o WhatsApp!");
+    } catch (error) {
+      toast.error("Não foi possível copiar o resumo.", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
+  }
+
+  async function handleCopyConsolidated() {
+    if (currentMonthEntries.length === 0) {
+      toast.error("Não há colaboradores para copiar nesta loja e competência.");
+      return;
+    }
+    try {
+      await copyText(consolidatedWhatsAppText({
+        entries: currentMonthEntries,
+        storeName: selectedStore,
+        monthLabel: currentMonthLabel,
+        year,
+        summary: storeSummary,
+      }));
+      toast.success("Resumo copiado para o WhatsApp!");
+    } catch (error) {
+      toast.error("Não foi possível copiar o resumo.", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
+  }
+
   return (
     <AppShell
       title="Benefícios Mensais"
@@ -595,6 +622,15 @@ export function BeneficiosPage() {
 
                   {/* Ações de Topo: Fechar/Reabrir Período & Adicionar Colaborador */}
                   <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 text-xs font-semibold"
+                      onClick={() => void handleCopyConsolidated()}
+                      disabled={currentMonthEntries.length === 0}
+                    >
+                      <Copy className="size-3.5 mr-1.5" /> Copiar WhatsApp
+                    </Button>
                     {isMaster && (
                       <Button
                         variant={isPeriodClosed ? "outline" : "default"}
@@ -721,7 +757,7 @@ export function BeneficiosPage() {
                         <TableHead className="text-right w-[125px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20">
                           VALOR A RECEBER
                         </TableHead>
-                        <TableHead className="text-center w-[80px]">AÇÕES</TableHead>
+                        <TableHead className="text-center w-[112px]">AÇÕES</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -824,6 +860,16 @@ export function BeneficiosPage() {
                             {/* Ações */}
                             <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                  onClick={() => void handleCopyIndividual(entry)}
+                                  title="Copiar resumo para WhatsApp"
+                                  aria-label={`Copiar resumo de ${entry.collaborator} para WhatsApp`}
+                                >
+                                  <Copy className="size-3.5" />
+                                </Button>
                                 <Button
                                   variant="ghost"
                                   size="sm"
