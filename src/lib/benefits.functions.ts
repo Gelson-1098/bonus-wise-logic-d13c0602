@@ -85,7 +85,7 @@ async function resolveAuthorizedStore(context: AuthenticatedContext, requestedNa
     throw new Error("Você não possui acesso aos benefícios desta loja.");
   }
 
-  return { id: store.id, name: resolution.store.name, isMaster: access.isMaster };
+  return { id: store.id, name: requestedName.trim(), isMaster: access.isMaster };
 }
 
 async function listAuthorizedStores(context: AuthenticatedContext) {
@@ -191,7 +191,7 @@ export const getBenefitEntries = createServerFn({ method: "GET" })
       await resolveAuthorizedStore(context, data.storeName);
     }
 
-    const authorizedNames = new Set(authorized.stores.map((store) => normalizeName(store.name)));
+    const authorizedStoreIds = new Set(authorized.stores.map((store) => store.id));
     const admin = await getAdmin();
     const result = await admin
       .from("app_settings")
@@ -216,7 +216,11 @@ export const getBenefitEntries = createServerFn({ method: "GET" })
     }
 
     return merged.filter((entry) => {
-      if (entry.year !== data.year || !authorizedNames.has(normalizeName(entry.storeName))) return false;
+      const resolution = resolveStore({ name: entry.storeName });
+      const registeredStore = resolution.status === "ok" && resolution.store
+        ? findDbStore(resolution.store, authorized.stores)
+        : null;
+      if (entry.year !== data.year || !registeredStore || !authorizedStoreIds.has(registeredStore.id)) return false;
       if (data.month && entry.month !== data.month) return false;
       if (data.storeName && data.storeName !== "TODAS") {
         return normalizeName(entry.storeName) === normalizeName(data.storeName);

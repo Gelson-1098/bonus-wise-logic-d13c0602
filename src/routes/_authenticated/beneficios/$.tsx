@@ -228,6 +228,14 @@ export function BeneficiosPage() {
   const parameters = paramsQuery.data ?? [];
   const periodStatuses = statusesQuery.data ?? {};
 
+  useEffect(() => {
+    const queryError = entriesQuery.error ?? paramsQuery.error ?? statusesQuery.error;
+    if (!queryError) return;
+    toast.error("Erro ao carregar benefícios", {
+      description: queryError instanceof Error ? queryError.message : "Tente novamente.",
+    });
+  }, [entriesQuery.error, paramsQuery.error, statusesQuery.error]);
+
   // Store access: gerente só enxerga as lojas vinculadas ao seu usuário.
   const myStoresQuery = useQuery({
     queryKey: ["my-store-names", access?.storeIds ?? []],
@@ -779,6 +787,12 @@ export function BeneficiosPage() {
                         <TableRow>
                           <TableCell colSpan={15} className="text-center py-8 text-xs text-muted-foreground">
                             Carregando benefícios da loja...
+                          </TableCell>
+                        </TableRow>
+                      ) : entriesQuery.isError ? (
+                        <TableRow>
+                          <TableCell colSpan={15} className="text-center py-8 text-xs text-destructive">
+                            Não foi possível carregar os benefícios. Tente novamente.
                           </TableCell>
                         </TableRow>
                       ) : filteredCollaborators.length === 0 ? (
