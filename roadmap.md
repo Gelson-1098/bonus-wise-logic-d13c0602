@@ -29,3 +29,7 @@
 - [x] Implementar busca autenticada de colaboradores disponíveis por período
 - [x] Adicionar seleção e vínculo manual no card Colaboradores
 - [x] Validar Jabaquara — Julho/2026, atualização imediata e rejeição de duplicidade
+
+## Regras mensais de 2026
+- [ ] Replicar as regras vigentes para todos os meses de 2026, preservando os escopos Global, Spoleto e Aeroporto
+- [ ] Vincular somente períodos ainda sem regra e validar que os lançamentos foram desbloqueados
