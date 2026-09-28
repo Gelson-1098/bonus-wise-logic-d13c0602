@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database } from "@/integrations/supabase/types";
 import { calculateBonus, type EngineCriterion, type EngineResult } from "@/lib/bonus-engine";
 
 const resultSchema = z.object({
@@ -19,6 +21,7 @@ const saveSchema = z.object({
 });
 
 const EDITABLE = ["aberto", "em_preenchimento", "correcao_solicitada", "em_conferencia", "enviado"];
+const ENTRY_LINK_EDITABLE = ["aberto", "em_preenchimento", "correcao_solicitada"];
 
 /** Recalcula e persiste o lançamento com a memória de cálculo congelada. */
 export const saveEntryCalculation = createServerFn({ method: "POST" })
@@ -270,6 +273,113 @@ const openSchema = z.object({
   year: z.number().int(),
   month: z.number().int().min(1).max(12),
 });
+
+const periodScopeSchema = z.object({
+  period_id: z.string().uuid(),
+});
+
+const addEmployeeSchema = periodScopeSchema.extend({
+  employee_id: z.string().uuid(),
+});
+
+async function requireEditablePeriod(
+  supabase: SupabaseClient<Database>,
+  periodId: string,
+) {
+  const { data: period, error } = await supabase
+    .from("bonus_periods")
+    .select("id,store_id,month,year,status")
+    .eq("id", periodId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!period) throw new Error("Período não encontrado ou sem permissão de acesso.");
+  if (!ENTRY_LINK_EDITABLE.includes(period.status)) {
+    throw new Error("Este período não permite adicionar colaboradores.");
+  }
+  const { data: canAccess, error: accessError } = await supabase.rpc("can_access_store", {
+    _store_id: period.store_id,
+  });
+  if (accessError) throw new Error(accessError.message);
+  if (canAccess !== true) throw new Error("Sem permissão para acessar os colaboradores desta loja.");
+  return period;
+}
+
+/** Lista a base ativa disponível para vínculo manual no período autorizado. */
+export const listAvailableEmployeesForPeriod = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => periodScopeSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const period = await requireEditablePeriod(context.supabase, data.period_id);
+    const { data: linked, error: linkedError } = await context.supabase
+      .from("employee_period_entries")
+      .select("employee_id")
+      .eq("period_id", period.id);
+    if (linkedError) throw new Error(linkedError.message);
+
+    const linkedIds = new Set((linked ?? []).map((row) => row.employee_id));
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: employees, error } = await supabaseAdmin
+      .from("employees")
+      .select("id,full_name,registration,position_id,store_id,positions(name),stores(name)")
+      .eq("active", true)
+      .order("full_name");
+    if (error) throw new Error(error.message);
+
+    return (employees ?? [])
+      .filter((employee) => !linkedIds.has(employee.id))
+      .map((employee) => ({
+        id: employee.id,
+        full_name: employee.full_name,
+        registration: employee.registration,
+        position_name: (employee.positions as unknown as { name: string } | null)?.name ?? null,
+        current_store_name: (employee.stores as unknown as { name: string } | null)?.name ?? null,
+      }));
+  });
+
+/** Vincula um colaborador existente somente à apuração do período informado. */
+export const addEmployeeToPeriod = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => addEmployeeSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const period = await requireEditablePeriod(context.supabase, data.period_id);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: employee, error: employeeError } = await supabaseAdmin
+      .from("employees")
+      .select("id,full_name,active,position_id,positions(base_value)")
+      .eq("id", data.employee_id)
+      .maybeSingle();
+    if (employeeError) throw new Error(employeeError.message);
+    if (!employee || !employee.active) throw new Error("Colaborador não encontrado ou inativo.");
+
+    const baseValue = (employee.positions as unknown as { base_value: number | null } | null)?.base_value ?? null;
+    const { data: entry, error } = await context.supabase
+      .from("employee_period_entries")
+      .insert({
+        period_id: period.id,
+        employee_id: employee.id,
+        store_id: period.store_id,
+        position_id: employee.position_id,
+        base_value: baseValue,
+      })
+      .select("id")
+      .single();
+    if (error?.code === "23505") throw new Error("Este colaborador já está vinculado a este período.");
+    if (error) throw new Error(error.message);
+
+    const { error: auditError } = await context.supabase.from("audit_logs").insert({
+      user_id: context.userId,
+      action: "colaborador_vinculado_periodo",
+      entity: "employee_period_entries",
+      entity_id: entry.id,
+      store_id: period.store_id,
+      period_id: period.id,
+      new_value: employee.id,
+      description: `${employee.full_name} vinculado manualmente a ${period.month}/${period.year}.`,
+    });
+    if (auditError) throw new Error(auditError.message);
+
+    return { ok: true, entry_id: entry.id, employee_name: employee.full_name };
+  });
 
 /** Abre o período da loja e gera os lançamentos dos funcionários ativos. */
 export const openPeriod = createServerFn({ method: "POST" })
