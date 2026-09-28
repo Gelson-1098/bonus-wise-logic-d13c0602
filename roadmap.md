@@ -23,3 +23,9 @@
 - [x] Route Benefits reads/writes through authorized server functions with explicit database error handling
 - [x] Add consolidated and individual WhatsApp clipboard actions using existing calculated values
 - [x] Validate save, edit, deduplication, reload persistence, clipboard output, and unauthorized store rejection
+
+## Vínculo manual de colaborador ao período
+- [x] Auditar período, vínculos existentes, permissões e proteção contra duplicidade
+- [ ] Implementar busca autenticada de colaboradores disponíveis por período
+- [ ] Adicionar seleção e vínculo manual no card Colaboradores
+- [ ] Validar Jabaquara — Julho/2026, atualização imediata e rejeição de duplicidade
