@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database } from "@/integrations/supabase/types";
 import { calculateBonus, type EngineCriterion, type EngineResult } from "@/lib/bonus-engine";
 
 const resultSchema = z.object({
@@ -19,6 +21,7 @@ const saveSchema = z.object({
 });
 
 const EDITABLE = ["aberto", "em_preenchimento", "correcao_solicitada", "em_conferencia", "enviado"];
+const ENTRY_LINK_EDITABLE = ["aberto", "em_preenchimento", "correcao_solicitada"];
 
 /** Recalcula e persiste o lançamento com a memória de cálculo congelada. */
 export const saveEntryCalculation = createServerFn({ method: "POST" })
@@ -280,7 +283,7 @@ const addEmployeeSchema = periodScopeSchema.extend({
 });
 
 async function requireEditablePeriod(
-  supabase: Parameters<Parameters<typeof requireSupabaseAuth>[0]>[0] extends never ? never : any,
+  supabase: SupabaseClient<Database>,
   periodId: string,
 ) {
   const { data: period, error } = await supabase
@@ -290,7 +293,7 @@ async function requireEditablePeriod(
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!period) throw new Error("Período não encontrado ou sem permissão de acesso.");
-  if (!EDITABLE.includes(period.status)) {
+  if (!ENTRY_LINK_EDITABLE.includes(period.status)) {
     throw new Error("Este período não permite adicionar colaboradores.");
   }
   const { data: canAccess, error: accessError } = await supabase.rpc("can_access_store", {
