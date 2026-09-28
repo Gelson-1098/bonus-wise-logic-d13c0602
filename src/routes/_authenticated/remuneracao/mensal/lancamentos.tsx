@@ -3,9 +3,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { AlertTriangle, Calculator, CheckCircle2, Send, XCircle } from "lucide-react";
+import { AlertTriangle, Calculator, CheckCircle2, Plus, Search, Send, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { openPeriod, saveEntryCalculation, transitionPeriod } from "@/lib/bonus.functions";
+import {
+  addEmployeeToPeriod,
+  listAvailableEmployeesForPeriod,
+  openPeriod,
+  saveEntryCalculation,
+  transitionPeriod,
+} from "@/lib/bonus.functions";
 import { getEntryRules, getPeriodVersion, listPositionsBasic } from "@/lib/rules.functions";
 import { AppShell } from "@/components/app-shell";
 import { PeriodPicker } from "@/components/period-picker";
@@ -19,7 +25,14 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   brl,
@@ -60,6 +73,7 @@ function LancamentoPage() {
   const [period, setPeriod] = useState({ month: now.getMonth() + 1, year: now.getFullYear() });
   const [storeId, setStoreId] = useState<string>("");
   const [openEntry, setOpenEntry] = useState<string | null>(null);
+  const [addEmployeeOpen, setAddEmployeeOpen] = useState(false);
 
   const open = useServerFn(openPeriod);
   const transition = useServerFn(transitionPeriod);
@@ -289,16 +303,26 @@ function LancamentoPage() {
 
 
           <Card>
-            <CardHeader className="flex-row items-center justify-between">
+            <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-base">Colaboradores</CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openMutation.mutate()}
-                disabled={!editable || openMutation.isPending}
-              >
-                Sincronizar colaboradores ativos
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAddEmployeeOpen(true)}
+                  disabled={!editable}
+                >
+                  <Plus className="size-4" /> Adicionar colaborador
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openMutation.mutate()}
+                  disabled={!editable || openMutation.isPending}
+                >
+                  Sincronizar colaboradores ativos
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="px-0">
               <div className="overflow-x-auto">
@@ -364,7 +388,133 @@ function LancamentoPage() {
           onClose={() => setOpenEntry(null)}
         />
       )}
+      <AddEmployeeDialog
+        open={addEmployeeOpen}
+        periodId={periodId}
+        onOpenChange={setAddEmployeeOpen}
+      />
     </AppShell>
+  );
+}
+
+type AvailableEmployee = {
+  id: string;
+  full_name: string;
+  registration: string | null;
+  position_name: string | null;
+  current_store_name: string | null;
+};
+
+function AddEmployeeDialog({
+  open,
+  periodId,
+  onOpenChange,
+}: {
+  open: boolean;
+  periodId: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const qc = useQueryClient();
+  const listAvailable = useServerFn(listAvailableEmployeesForPeriod);
+  const addEmployee = useServerFn(addEmployeeToPeriod);
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const availableQuery = useQuery({
+    queryKey: ["available-employees", periodId],
+    enabled: open,
+    queryFn: () => listAvailable({ data: { period_id: periodId } }),
+  });
+  const normalizedSearch = search.trim().toLocaleLowerCase("pt-BR");
+  const available = (availableQuery.data ?? []) as AvailableEmployee[];
+  const filtered = available.filter((employee) => {
+    if (!normalizedSearch) return true;
+    return [employee.full_name, employee.registration ?? ""]
+      .some((value) => value.toLocaleLowerCase("pt-BR").includes(normalizedSearch));
+  });
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      if (!selectedId) throw new Error("Selecione um colaborador.");
+      return addEmployee({ data: { period_id: periodId, employee_id: selectedId } });
+    },
+    onSuccess: async (result) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["entries", periodId] }),
+        qc.invalidateQueries({ queryKey: ["available-employees", periodId] }),
+      ]);
+      toast.success("Colaborador adicionado", { description: `${result.employee_name} agora faz parte desta apuração.` });
+      setSearch("");
+      setSelectedId(null);
+      onOpenChange(false);
+    },
+    onError: (error: Error) => toast.error("Não foi possível adicionar", { description: error.message }),
+  });
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen && !mutation.isPending) {
+      setSearch("");
+      setSelectedId(null);
+    }
+    onOpenChange(nextOpen);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Adicionar colaborador</DialogTitle>
+          <DialogDescription>
+            Selecione um colaborador já cadastrado para incluí-lo somente nesta apuração.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Pesquisar por nome ou matrícula"
+              className="pl-9"
+            />
+          </div>
+          <div className="max-h-80 space-y-1 overflow-y-auto rounded-md border p-1">
+            {availableQuery.isLoading && <p className="p-4 text-sm text-muted-foreground">Carregando colaboradores…</p>}
+            {availableQuery.isError && (
+              <p className="p-4 text-sm text-destructive">Não foi possível carregar os colaboradores disponíveis.</p>
+            )}
+            {!availableQuery.isLoading && !availableQuery.isError && filtered.length === 0 && (
+              <p className="p-4 text-sm text-muted-foreground">Nenhum colaborador disponível encontrado.</p>
+            )}
+            {filtered.map((employee) => (
+              <Button
+                key={employee.id}
+                type="button"
+                variant={selectedId === employee.id ? "secondary" : "ghost"}
+                className="h-auto w-full justify-start px-3 py-2 text-left"
+                onClick={() => setSelectedId(employee.id)}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{employee.full_name}</span>
+                  <span className="block truncate text-xs font-normal text-muted-foreground">
+                    {employee.registration ? `Matrícula ${employee.registration} · ` : ""}
+                    {employee.position_name ?? "Cargo não informado"} · {employee.current_store_name ?? "Loja não informada"}
+                  </span>
+                </span>
+              </Button>
+            ))}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={mutation.isPending}>
+            Cancelar
+          </Button>
+          <Button onClick={() => mutation.mutate()} disabled={!selectedId || mutation.isPending}>
+            {mutation.isPending ? "Adicionando…" : "Adicionar ao período"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
