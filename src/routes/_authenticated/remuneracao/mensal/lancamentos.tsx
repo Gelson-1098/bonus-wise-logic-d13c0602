@@ -388,11 +388,13 @@ function LancamentoPage() {
           onClose={() => setOpenEntry(null)}
         />
       )}
-      <AddEmployeeDialog
-        open={addEmployeeOpen}
-        periodId={periodId}
-        onOpenChange={setAddEmployeeOpen}
-      />
+      {periodId && (
+        <AddEmployeeDialog
+          open={addEmployeeOpen}
+          periodId={periodId}
+          onOpenChange={setAddEmployeeOpen}
+        />
+      )}
     </AppShell>
   );
 }
