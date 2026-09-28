@@ -26,6 +26,6 @@
 
 ## Vínculo manual de colaborador ao período
 - [x] Auditar período, vínculos existentes, permissões e proteção contra duplicidade
-- [ ] Implementar busca autenticada de colaboradores disponíveis por período
-- [ ] Adicionar seleção e vínculo manual no card Colaboradores
-- [ ] Validar Jabaquara — Julho/2026, atualização imediata e rejeição de duplicidade
+- [x] Implementar busca autenticada de colaboradores disponíveis por período
+- [x] Adicionar seleção e vínculo manual no card Colaboradores
+- [x] Validar Jabaquara — Julho/2026, atualização imediata e rejeição de duplicidade
