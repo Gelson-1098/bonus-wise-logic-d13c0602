@@ -83,6 +83,15 @@ export const resetUserPassword = createServerFn({ method: "POST" })
     return m.startManagedUserPasswordReset(data.user_id, actor);
   });
 
+export const getUserTemporaryPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => userIdSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const m = await import("@/lib/users.server");
+    await m.assertMaster(context.supabase);
+    return { temporary_password: await m.getManagedUserTemporaryPassword(data.user_id) };
+  });
+
 export const diagnoseUserAccess = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => userIdSchema.parse(data))

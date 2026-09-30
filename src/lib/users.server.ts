@@ -81,7 +81,39 @@ export type ManagedUser = {
   last_sign_in_at: string | null;
   created_at: string | null;
   must_change_password: boolean;
+  has_temp_password: boolean;
 };
+
+function generateTemporaryPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return `Dex@${Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("")}`;
+}
+
+async function setTemporaryPassword(userId: string, password: string, actorId: string) {
+  const { error } = await supabaseAdmin.rpc("set_user_temp_password" as never, {
+    _user_id: userId,
+    _password: password,
+    _by: actorId || null,
+  } as never);
+  if (error) throw new Error("Não foi possível proteger a senha temporária.");
+}
+
+async function clearTemporaryPassword(userId: string) {
+  const { error } = await supabaseAdmin.rpc("clear_user_temp_password" as never, {
+    _user_id: userId,
+  } as never);
+  if (error) throw new Error("Não foi possível invalidar a senha temporária.");
+}
+
+export async function getManagedUserTemporaryPassword(userId: string) {
+  const { data, error } = await supabaseAdmin.rpc("get_user_temp_password" as never, {
+    _user_id: userId,
+  } as never);
+  if (error) throw new Error("Não foi possível consultar a senha temporária.");
+  return (data as unknown as string | null) ?? null;
+}
 
 export async function listManagedUsers(): Promise<ManagedUser[]> {
   const [profiles, roles, stores, authList] = await Promise.all([
@@ -102,7 +134,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   const lastBy = new Map<string, string | null>();
   for (const u of authList.data?.users ?? []) lastBy.set(u.id, u.last_sign_in_at ?? null);
 
-  return (profiles.data ?? []).map((p) => ({
+  return Promise.all((profiles.data ?? []).map(async (p) => ({
     id: p.id,
     full_name: p.full_name,
     email: p.email,
@@ -112,7 +144,8 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
     last_sign_in_at: lastBy.get(p.id) ?? null,
     created_at: p.created_at ?? null,
     must_change_password: p.must_change_password ?? false,
-  }));
+    has_temp_password: !!(await getManagedUserTemporaryPassword(p.id)),
+  })));
 }
 
 async function countActiveMasters(exceptUserId?: string) {
@@ -163,7 +196,7 @@ export async function createManagedUser(
     .maybeSingle();
   if (existingProfile) throw new Error("Este e-mail já possui acesso cadastrado.");
 
-  const password = await readDefaultPassword();
+  const password = generateTemporaryPassword();
 
   const created = await supabaseAdmin.auth.admin.createUser({
     email: input.email,
@@ -184,12 +217,15 @@ export async function createManagedUser(
       full_name: input.full_name,
       email: input.email,
       active: true,
+      must_change_password: true,
     });
     if (profile.error) throw new Error(profile.error.message);
 
     await supabaseAdmin.from("user_roles").delete().eq("user_id", userId);
     const role = await supabaseAdmin.from("user_roles").insert({ user_id: userId, role: input.role });
     if (role.error) throw new Error(role.error.message);
+
+    await setTemporaryPassword(userId, password, actor.userId);
 
     if (storeIds.length) {
       const links = await supabaseAdmin
@@ -198,6 +234,7 @@ export async function createManagedUser(
       if (links.error) throw new Error(links.error.message);
     }
   } catch (err) {
+    await clearTemporaryPassword(userId).catch(() => undefined);
     await supabaseAdmin.from("user_stores").delete().eq("user_id", userId);
     await supabaseAdmin.from("user_roles").delete().eq("user_id", userId);
     await supabaseAdmin.from("profiles").delete().eq("id", userId);
@@ -209,7 +246,14 @@ export async function createManagedUser(
 
   await audit(actor, "USER_CREATED", userId, `Usuário ${input.email} criado como ${input.role}.`);
 
-  return { user_id: userId, email: input.email, role: input.role, store_ids: storeIds };
+  return {
+    user_id: userId,
+    full_name: input.full_name,
+    email: input.email,
+    temporary_password: password,
+    role: input.role,
+    store_ids: storeIds,
+  };
 }
 
 export async function updateManagedUser(
@@ -321,14 +365,20 @@ export async function startManagedUserPasswordReset(userId: string, actor: Actor
   if (profileError || !profile?.email) throw new Error("Usuário não encontrado ou sem e-mail.");
   if (!profile.active) throw new Error("Ative o usuário antes de iniciar a recuperação de senha.");
 
+  const password = generateTemporaryPassword();
+  const authUpdate = await supabaseAdmin.auth.admin.updateUserById(userId, { password });
+  if (authUpdate.error) throw new Error("Não foi possível atualizar a senha de acesso.");
+
   const flag = await supabaseAdmin
     .from("profiles")
     .update({ must_change_password: true })
     .eq("id", userId);
   if (flag.error) throw new Error("Não foi possível marcar a troca obrigatória de senha.");
 
+  await setTemporaryPassword(userId, password, actor.userId);
+
   await audit(actor, "USER_PASSWORD_RESET_REQUESTED", userId, "Recuperação administrativa de senha iniciada.");
-  return { email: profile.email };
+  return { email: profile.email, temporary_password: password };
 }
 
 export async function diagnoseManagedUser(userId: string) {
