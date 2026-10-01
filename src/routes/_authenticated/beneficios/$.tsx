@@ -11,12 +11,14 @@ import {
   Edit3,
   FileSpreadsheet,
   Gift,
+  Info,
   Lock,
   Plus,
   RefreshCw,
   Search,
   Settings2,
   Trash2,
+  Undo2,
   Unlock,
   User,
   Users,
@@ -27,7 +29,10 @@ import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -54,6 +59,8 @@ import { brl, MONTHS } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   type BenefitEntry,
+  type BenefitAdjustment,
+  type BenefitOccurrence,
   type BenefitParameter,
 } from "@/lib/benefits-types";
 import {
@@ -62,10 +69,13 @@ import {
   getBenefitEntries,
   getBenefitParameters,
   getBenefitPeriodStatuses,
+  listBenefitEmployees,
   resetBenefitsToSpreadsheetBaseline,
   saveBenefitEntry,
   saveBenefitParameters,
+  setBenefitZeroed,
   toggleBenefitPeriodStatus,
+  undoLastBenefitChange,
 } from "@/lib/benefits.functions";
 
 export const Route = createFileRoute("/_authenticated/beneficios/$")({
@@ -103,6 +113,21 @@ function normalizeName(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
+}
+
+function calendarDays(year: number, month: number) {
+  return new Date(year, month, 0).getDate();
+}
+
+function HelpTip({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="inline-flex cursor-help text-muted-foreground" aria-label={text}><Info className="size-3.5" /></span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-64">{text}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 async function copyText(text: string) {
@@ -152,17 +177,22 @@ function consolidatedWhatsAppText(input: {
   year: number;
   summary: { totalVr: number; totalVt: number; totalAditivos: number; totalBeneficios: number };
 }) {
-  const collaborators = input.entries.map((entry) => {
+  const grouped = new Map<string, BenefitEntry[]>();
+  for (const entry of input.entries) grouped.set(entry.positionName ?? "Sem cargo", [...(grouped.get(entry.positionName ?? "Sem cargo") ?? []), entry]);
+  const collaborators = Array.from(grouped.entries()).map(([position, entries]) => [
+    `*${position}*`,
+    ...entries.map((entry) => {
     const additives = Number(entry.aditivoVr || 0) + Number(entry.aditivoVt || 0);
     return [
-      `👤 ${entry.collaborator}`,
+      `• ${entry.collaborator}`,
       `📅 Diárias: ${entry.diasDevidos}`,
       `🍽️ VR: ${brl(entry.totalVr)}`,
       `🚌 VT: ${brl(entry.totalVt)}`,
       `➕ Aditivos: ${brl(additives)}`,
       `💰 Total: ${brl(entry.totalBeneficios)}`,
     ].join("\n");
-  });
+    }),
+  ].flat().join("\n"));
 
   return [
     `📋 BENEFÍCIOS CONSOLIDADO — ${input.monthLabel.toUpperCase()}/${input.year}`,
@@ -196,6 +226,9 @@ export function BeneficiosPage() {
   const persistParameters = useServerFn(saveBenefitParameters);
   const fetchStatuses = useServerFn(getBenefitPeriodStatuses);
   const persistStatus = useServerFn(toggleBenefitPeriodStatus);
+  const fetchEmployees = useServerFn(listBenefitEmployees);
+  const changeZeroed = useServerFn(setBenefitZeroed);
+  const undoChange = useServerFn(undoLastBenefitChange);
 
   const [activeTab, setActiveTab] = useState<"lancamentos" | "consolidado" | "parametros">("lancamentos");
   const [year, setYear] = useState(2026);
@@ -208,6 +241,9 @@ export function BeneficiosPage() {
   const [isNewEntry, setIsNewEntry] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [zeroDialog, setZeroDialog] = useState<{ entry: BenefitEntry; zeroed: boolean } | null>(null);
+  const [zeroReason, setZeroReason] = useState("");
+  const [confirmUndo, setConfirmUndo] = useState(false);
 
   const entriesQuery = useQuery({
     queryKey: ["benefit-entries", year],
@@ -222,6 +258,12 @@ export function BeneficiosPage() {
   const statusesQuery = useQuery({
     queryKey: ["benefit-statuses", year],
     queryFn: () => fetchStatuses({ data: { year } }),
+  });
+
+  const employeesQuery = useQuery({
+    queryKey: ["benefit-employees", year, month, selectedStore],
+    enabled: !!selectedStore,
+    queryFn: () => fetchEmployees({ data: { year, month, storeName: selectedStore, search: "" } }),
   });
 
   const rawEntries = entriesQuery.data ?? [];
@@ -422,6 +464,28 @@ export function BeneficiosPage() {
     onError: (err: any) => toast.error("Erro ao alterar status", { description: err.message }),
   });
 
+  const zeroMutation = useMutation({
+    mutationFn: ({ entry, zeroed, justification }: { entry: BenefitEntry; zeroed: boolean; justification: string }) =>
+      changeZeroed({ data: { id: entry.id, year: entry.year, storeName: entry.storeName, zeroed, justification } }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["benefit-entries"] });
+      toast.success(zeroDialog?.zeroed ? "Benefício zerado com memória de cálculo preservada." : "Benefício reativado com os valores originais.");
+      setZeroDialog(null);
+      setZeroReason("");
+    },
+    onError: (error: Error) => toast.error("Não foi possível alterar o benefício", { description: error.message }),
+  });
+
+  const undoMutation = useMutation({
+    mutationFn: () => undoChange({ data: { year, storeName: selectedStore } }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["benefit-entries"] });
+      toast.success("Última alteração desfeita.");
+      setConfirmUndo(false);
+    },
+    onError: (error: Error) => toast.error("Não foi possível desfazer", { description: error.message }),
+  });
+
   const saveParamsMutation = useMutation({
     mutationFn: (newParams: BenefitParameter[]) => persistParameters({ data: { parameters: newParams } }),
     onSuccess: async () => {
@@ -463,11 +527,11 @@ export function BeneficiosPage() {
       collaborator: "",
       year,
       month,
-      diasMes: 30,
+      diasMes: calendarDays(year, month),
       folgas: 5,
       diasDevidos: 25,
       valorVr: defaultVr,
-      totalVr: defaultVr * 25,
+      totalVr: defaultVr * Math.max(0, calendarDays(year, month) - 5),
       vtDiarista: 0,
       vtMensalista: defaultVtMensal,
       depositoDiario: 0,
@@ -475,7 +539,7 @@ export function BeneficiosPage() {
       aditivoVt: 0,
       aditivoVr: 0,
       obs: "",
-      totalBeneficios: defaultVr * 25 + defaultVtMensal,
+      totalBeneficios: defaultVr * Math.max(0, calendarDays(year, month) - 5) + defaultVtMensal,
     };
 
     setIsNewEntry(true);
@@ -517,6 +581,7 @@ export function BeneficiosPage() {
   }
 
   return (
+    <TooltipProvider>
     <AppShell
       title="Benefícios Mensais"
       description="Controle e apuração de Vale Refeição e Vale Transporte por loja e colaborador."
@@ -644,6 +709,9 @@ export function BeneficiosPage() {
 
                   {/* Ações de Topo: Fechar/Reabrir Período & Adicionar Colaborador */}
                   <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" className="h-9 text-xs font-semibold" onClick={() => setConfirmUndo(true)} disabled={isPeriodClosed && !isMaster}>
+                      <Undo2 className="size-3.5 mr-1.5" /> Desfazer última alteração
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -901,6 +969,16 @@ export function BeneficiosPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
+                                  className="h-7 px-2 text-[10px] font-semibold"
+                                  onClick={() => { setZeroReason(""); setZeroDialog({ entry, zeroed: !entry.zeroed }); }}
+                                  disabled={isPeriodClosed && !isMaster}
+                                  title={entry.zeroed ? "Restaurar os valores originais" : "Zerar mantendo a memória de cálculo"}
+                                >
+                                  {entry.zeroed ? "Reativar" : "Zerar"}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   className="h-7 w-7 p-0 text-primary"
                                   onClick={() => {
                                     setIsNewEntry(false);
@@ -1138,6 +1216,7 @@ export function BeneficiosPage() {
             isNew={isNewEntry}
             isMaster={isMaster}
             parameters={parameters}
+            employees={employeesQuery.data ?? []}
             onClose={() => setEditingEntry(null)}
             onSave={(updated) => saveEntryMutation.mutate(updated)}
             isSaving={saveEntryMutation.isPending}
@@ -1185,8 +1264,33 @@ export function BeneficiosPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog open={!!zeroDialog} onOpenChange={(open) => !open && setZeroDialog(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{zeroDialog?.zeroed ? "Zerar benefício" : "Reativar benefício"}</DialogTitle>
+              <DialogDescription>{zeroDialog?.zeroed ? "O total ficará em R$ 0,00, mas a memória de cálculo será preservada." : "Os valores originais calculados serão restaurados."}</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="zero-reason">Justificativa obrigatória</Label>
+              <Textarea id="zero-reason" value={zeroReason} onChange={(event) => setZeroReason(event.target.value)} />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setZeroDialog(null)}>Cancelar</Button>
+              <Button disabled={zeroReason.trim().length < 3 || zeroMutation.isPending} onClick={() => zeroDialog && zeroMutation.mutate({ ...zeroDialog, justification: zeroReason.trim() })}>Confirmar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <AlertDialog open={confirmUndo} onOpenChange={setConfirmUndo}>
+          <AlertDialogContent>
+            <AlertDialogHeader><AlertDialogTitle>Desfazer última alteração?</AlertDialogTitle><AlertDialogDescription>A última alteração restaurável feita por você nesta loja será revertida.</AlertDialogDescription></AlertDialogHeader>
+            <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => undoMutation.mutate()} disabled={undoMutation.isPending}>Desfazer</AlertDialogAction></AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppShell>
+    </TooltipProvider>
   );
 }
 
@@ -1199,6 +1303,7 @@ function CollaboratorEditDialog({
   isNew,
   isMaster,
   parameters,
+  employees,
   onClose,
   onSave,
   isSaving,
@@ -1207,12 +1312,15 @@ function CollaboratorEditDialog({
   isNew: boolean;
   isMaster: boolean;
   parameters: BenefitParameter[];
+  employees: Array<{ id: string; fullName: string; registration: string | null; positionId: string | null; positionName: string; alreadyLinked: boolean }>;
   onClose: () => void;
   onSave: (entry: any) => void;
   isSaving: boolean;
 }) {
-  const [collaborator, setCollaborator] = useState(entry.collaborator);
-  const [diasMes, setDiasMes] = useState(String(entry.diasMes || 30));
+  const [employeeId, setEmployeeId] = useState(entry.employeeId ?? "");
+  const selectedEmployee = employees.find((employee) => employee.id === employeeId);
+  const collaborator = selectedEmployee?.fullName ?? entry.collaborator;
+  const diasMes = calendarDays(entry.year, entry.month);
   const [folgas, setFolgas] = useState(String(entry.folgas || 5));
   const [valorVr, setValorVr] = useState(String(entry.valorVr || 39.13));
   const [vtDiarista, setVtDiarista] = useState(String(entry.vtDiarista || 0));
@@ -1220,39 +1328,54 @@ function CollaboratorEditDialog({
   const [aditivoVt, setAditivoVt] = useState(String(entry.aditivoVt || 0));
   const [aditivoVr, setAditivoVr] = useState(String(entry.aditivoVr || 0));
   const [obs, setObs] = useState(entry.obs || "");
+  const [transportMode, setTransportMode] = useState(entry.transportMode ?? "personalizado");
+  const [occurrences, setOccurrences] = useState<BenefitOccurrence[]>(entry.occurrences ?? []);
+  const [adjustments, setAdjustments] = useState<BenefitAdjustment[]>(entry.adjustments ?? []);
+  const [occurrenceType, setOccurrenceType] = useState<BenefitOccurrence["type"]>("FALTA");
+  const [occurrenceDays, setOccurrenceDays] = useState("1");
+  const [occurrenceNote, setOccurrenceNote] = useState("");
+  const [occurrenceDeduct, setOccurrenceDeduct] = useState(false);
+  const [adjustmentKind, setAdjustmentKind] = useState<BenefitAdjustment["kind"]>("ADITIVO");
+  const [adjustmentCategory, setAdjustmentCategory] = useState<BenefitAdjustment["category"]>("VR");
+  const [adjustmentValue, setAdjustmentValue] = useState("");
+  const [adjustmentDescription, setAdjustmentDescription] = useState("");
 
   // Cálculos automáticos ao vivo
   const calcs = useMemo(() => {
     return computeBenefitCalculations({
-      diasMes: Number(diasMes) || 0,
+      diasMes,
       folgas: Number(folgas) || 0,
       valorVr: Number(valorVr) || 0,
       vtDiarista: Number(vtDiarista) || 0,
       vtMensalista: Number(vtMensalista) || 0,
-      aditivoVt: Number(aditivoVt) || 0,
-      aditivoVr: Number(aditivoVr) || 0,
+      aditivoVt: adjustments.length ? adjustments.filter((item) => item.category === "VT").reduce((sum, item) => sum + (item.kind === "DESCONTO" ? -item.value : item.value), 0) : Number(aditivoVt) || 0,
+      aditivoVr: adjustments.length ? adjustments.filter((item) => item.category === "VR").reduce((sum, item) => sum + (item.kind === "DESCONTO" ? -item.value : item.value), 0) : Number(aditivoVr) || 0,
+      occurrenceDays: occurrences.filter((item) => item.deductFromDueDays).reduce((sum, item) => sum + item.days, 0),
     });
-  }, [diasMes, folgas, valorVr, vtDiarista, vtMensalista, aditivoVt, aditivoVr]);
+  }, [diasMes, folgas, valorVr, vtDiarista, vtMensalista, aditivoVt, aditivoVr, adjustments, occurrences]);
 
   function handleSave() {
-    if (!collaborator.trim()) {
-      toast.error("Informe o nome do colaborador.");
+    if (!employeeId && isNew) {
+      toast.error("Selecione um funcionário do cadastro oficial.");
       return;
     }
 
     onSave({
       id: isNew ? undefined : entry.id,
+      employeeId: employeeId || entry.employeeId,
       storeName: entry.storeName,
       collaborator: collaborator.trim(),
       year: entry.year,
       month: entry.month,
-      diasMes: Number(diasMes) || 0,
       folgas: Number(folgas) || 0,
       valorVr: Number(valorVr) || 0,
       vtDiarista: Number(vtDiarista) || 0,
       vtMensalista: Number(vtMensalista) || 0,
       aditivoVt: Number(aditivoVt) || 0,
       aditivoVr: Number(aditivoVr) || 0,
+      transportMode,
+      occurrences,
+      adjustments,
       obs: obs.trim(),
     });
   }
@@ -1275,28 +1398,26 @@ function CollaboratorEditDialog({
         <div className="space-y-4 py-2 text-xs">
           {/* Nome do Colaborador */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Nome do Colaborador *</Label>
-            <Input
-              value={collaborator}
-              onChange={(e) => setCollaborator(e.target.value)}
-              placeholder="Nome completo ou apelido operacional"
-              className="h-9 text-xs"
-            />
+            <Label className="text-xs font-semibold">Funcionário *</Label>
+            <Select value={employeeId} onValueChange={setEmployeeId} disabled={!isNew && !!entry.employeeId}>
+              <SelectTrigger className="h-9 text-xs"><SelectValue placeholder={entry.collaborator || "Selecione no cadastro oficial"} /></SelectTrigger>
+              <SelectContent>{employees.map((employee) => <SelectItem key={employee.id} value={employee.id} disabled={employee.alreadyLinked && employee.id !== entry.employeeId}>{employee.fullName}{employee.registration ? ` · ${employee.registration}` : ""} · {employee.positionName}</SelectItem>)}</SelectContent>
+            </Select>
           </div>
 
           {/* Dias e Folgas */}
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Dias do Mês</Label>
+              <Label className="flex items-center gap-1 text-xs">Dias do Mês <HelpTip text="Quantidade natural de dias do mês da competência. Esse valor é automático e não pode ser alterado." /></Label>
               <Input
                 type="number"
                 value={diasMes}
-                onChange={(e) => setDiasMes(e.target.value)}
+                readOnly
                 className="h-9 text-xs"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Folgas</Label>
+              <Label className="flex items-center gap-1 text-xs">Folgas <HelpTip text="Quantidade informada que reduz os dias devidos pela fórmula atual." /></Label>
               <Input
                 type="number"
                 value={folgas}
@@ -1305,7 +1426,7 @@ function CollaboratorEditDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-primary">Dias Devidos</Label>
+              <Label className="flex items-center gap-1 text-xs font-bold text-primary">Dias Devidos <HelpTip text="Dias do mês menos folgas e somente ocorrências marcadas para abatimento." /></Label>
               <div className="h-9 flex items-center px-3 rounded-md border bg-muted/30 font-bold text-primary">
                 {calcs.diasDevidos}
               </div>
@@ -1347,7 +1468,14 @@ function CollaboratorEditDialog({
 
           {/* Vale Transporte (VT) */}
           <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-            <p className="font-bold text-[11px] uppercase tracking-wide text-foreground">Vale Transporte (VT)</p>
+            <p className="flex items-center gap-1 font-bold text-[11px] uppercase tracking-wide text-foreground">Vale Transporte (VT) <HelpTip text="Selecione uma modalidade rápida. Os valores continuam editáveis e ficam preservados nesta competência." /></p>
+            <Select value={transportMode} onValueChange={(value) => {
+              setTransportMode(value as typeof transportMode);
+              const findValue = (id: string, fallback: number) => parameters.find((parameter) => parameter.id === id)?.defaultValue ?? fallback;
+              if (value === "onibus_mensal") { setVtMensalista(String(findValue("vt-sp-onibus", 257.53))); setVtDiarista("0"); }
+              if (value === "combo_mensal") { setVtMensalista(String(findValue("vt-sp-combo", 411.13))); setVtDiarista(String(findValue("vt-onibus-diario", 10.6))); }
+              if (value === "onibus_diario") { setVtMensalista("0"); setVtDiarista(String(findValue("vt-onibus-diario", 10.6))); }
+            }}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="onibus_mensal">Ônibus mensal</SelectItem><SelectItem value="combo_mensal">Ônibus + metrô mensal</SelectItem><SelectItem value="onibus_diario">Só ônibus diário</SelectItem><SelectItem value="personalizado">Personalizado</SelectItem></SelectContent></Select>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-[11px]">VT Mensalista (R$)</Label>
@@ -1394,6 +1522,21 @@ function CollaboratorEditDialog({
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-lg border p-3 space-y-3">
+            <p className="flex items-center gap-1 font-bold text-[11px] uppercase">Ocorrências <HelpTip text="Somente ocorrências marcadas como abatíveis reduzem os dias devidos." /></p>
+            <div className="grid gap-2 sm:grid-cols-4"><Select value={occurrenceType} onValueChange={(value) => setOccurrenceType(value as BenefitOccurrence["type"])}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent>{["FALTA", "ATESTADO", "BH", "OUTRO"].map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><Input className="h-8" type="number" min="0.5" step="0.5" value={occurrenceDays} onChange={(event) => setOccurrenceDays(event.target.value)} placeholder="Dias" /><Input className="h-8 sm:col-span-2" value={occurrenceNote} onChange={(event) => setOccurrenceNote(event.target.value)} placeholder="Motivo/observação" /></div>
+            <label className="flex items-center gap-2"><Checkbox checked={occurrenceDeduct} onCheckedChange={(checked) => setOccurrenceDeduct(checked === true)} /> Abater dos dias devidos</label>
+            <Button type="button" variant="outline" size="sm" disabled={!occurrenceNote.trim() || Number(occurrenceDays) <= 0} onClick={() => { setOccurrences((current) => [...current, { id: crypto.randomUUID(), type: occurrenceType, days: Number(occurrenceDays), note: occurrenceNote.trim(), deductFromDueDays: occurrenceDeduct }]); setOccurrenceNote(""); }}>Adicionar ocorrência</Button>
+            {occurrences.map((item) => <div key={item.id} className="flex items-center justify-between gap-2 text-xs"><span>{item.type} · {item.days} dia(s) · {item.note}{item.deductFromDueDays ? " · Abatível" : ""}</span><Button type="button" variant="ghost" size="sm" onClick={() => setOccurrences((current) => current.filter((value) => value.id !== item.id))}><Trash2 className="size-3.5" /></Button></div>)}
+          </div>
+
+          <div className="rounded-lg border p-3 space-y-3">
+            <p className="flex items-center gap-1 font-bold text-[11px] uppercase">Aditivos e descontos <HelpTip text="O sistema aplica automaticamente o sinal; informe sempre a justificativa." /></p>
+            <div className="grid gap-2 sm:grid-cols-4"><Select value={adjustmentKind} onValueChange={(value) => setAdjustmentKind(value as BenefitAdjustment["kind"])}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ADITIVO">+ Aditivo</SelectItem><SelectItem value="DESCONTO">− Desconto</SelectItem></SelectContent></Select><Select value={adjustmentCategory} onValueChange={(value) => setAdjustmentCategory(value as BenefitAdjustment["category"])}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="VR">VR</SelectItem><SelectItem value="VT">VT</SelectItem></SelectContent></Select><Input className="h-8" type="number" min="0.01" step="0.01" value={adjustmentValue} onChange={(event) => setAdjustmentValue(event.target.value)} placeholder="Valor" /><Input className="h-8" value={adjustmentDescription} onChange={(event) => setAdjustmentDescription(event.target.value)} placeholder="Justificativa" /></div>
+            <Button type="button" variant="outline" size="sm" disabled={!adjustmentDescription.trim() || Number(adjustmentValue) <= 0} onClick={() => { setAdjustments((current) => [...current, { id: crypto.randomUUID(), kind: adjustmentKind, category: adjustmentCategory, value: Number(adjustmentValue), description: adjustmentDescription.trim() }]); setAdjustmentValue(""); setAdjustmentDescription(""); }}>Adicionar ajuste</Button>
+            {adjustments.map((item) => <div key={item.id} className="flex items-center justify-between gap-2 text-xs"><span>{item.kind === "ADITIVO" ? "+" : "−"} {item.category} {brl(item.value)} · {item.description}</span><Button type="button" variant="ghost" size="sm" onClick={() => setAdjustments((current) => current.filter((value) => value.id !== item.id))}><Trash2 className="size-3.5" /></Button></div>)}
           </div>
 
           {/* Destaque do Valor Final a Receber */}
