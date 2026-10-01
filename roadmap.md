@@ -38,4 +38,4 @@
 - [x] Implementar credenciais temporárias individuais e descarte após troca
 - [x] Atualizar criação, reset, cópia e WhatsApp na Central de Usuários
 - [x] Implementar exportação Excel em quatro abas com filtros e autorização
-- [ ] Validar acesso, reset, permissões, arquivo e compilação
+- [x] Validar acesso, reset, permissões, arquivo e compilação
