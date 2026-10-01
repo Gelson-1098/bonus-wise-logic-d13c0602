@@ -22,7 +22,7 @@ export function createBenefitsWorkbook(records: BenefitExportRecord[]) {
     Ano: String(entry.year),
     Loja: entry.storeName,
     "Código da loja": entry.storeCode,
-    "Store ID": "",
+    "Store ID": entry.storeId ?? "",
     "Employee ID": entry.employeeId ?? "",
     Colaborador: entry.collaborator,
     Cargo: entry.positionName ?? "",
@@ -32,14 +32,15 @@ export function createBenefitsWorkbook(records: BenefitExportRecord[]) {
     "Valor diário": entry.valorVr,
     "Total VR": entry.totalVr,
     "Total VT": entry.totalVt,
-    "Outros valores": Number(entry.aditivoVr || 0) + Number(entry.aditivoVt || 0),
+    Aditivos: (entry.adjustments ?? []).filter((adjustment) => adjustment.kind === "ADITIVO").reduce((sum, adjustment) => sum + adjustment.value, 0),
+    Descontos: (entry.adjustments ?? []).filter((adjustment) => adjustment.kind === "DESCONTO").reduce((sum, adjustment) => sum + adjustment.value, 0),
     "Total geral": entry.totalBeneficios,
     Status: entry.status,
     "Data de aprovação": "",
     "Aprovado por": "",
   }));
   const consolidatedSheet = XLSX.utils.json_to_sheet(consolidated);
-  setWidths(consolidatedSheet, [14, 8, 24, 16, 36, 36, 28, 18, 12, 18, 12, 15, 15, 15, 18, 16, 14, 20, 20]);
+  setWidths(consolidatedSheet, [14, 8, 24, 16, 36, 36, 28, 18, 12, 18, 12, 15, 15, 15, 15, 16, 14, 20, 20]);
   XLSX.utils.book_append_sheet(workbook, consolidatedSheet, "Consolidado");
 
   const grouped = new Map<string, BenefitExportRecord[]>();

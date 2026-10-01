@@ -1078,6 +1078,15 @@ export function BeneficiosPage() {
                 <div className="flex items-end"><Button variant="outline" className="w-full" onClick={() => void handleCopyMultiStore()} disabled={!consolidatedEntries.length}><Copy className="size-4" /> Copiar WhatsApp</Button></div>
               </CardContent>
             </Card>
+            <Card>
+              <CardHeader className="pb-3"><CardTitle className="text-sm">Colaboradores no filtro</CardTitle><CardDescription>{consolidatedEntries.length} registro(s) na competência selecionada.</CardDescription></CardHeader>
+              <CardContent className="px-0"><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Loja</TableHead><TableHead>Cargo</TableHead><TableHead>Colaborador</TableHead><TableHead>Employee ID</TableHead><TableHead className="text-right">VR</TableHead><TableHead className="text-right">VT</TableHead><TableHead className="text-right">Aditivos</TableHead><TableHead className="text-right">Descontos</TableHead><TableHead className="text-right">Total</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{consolidatedEntries.map((entry) => {
+                const additions = (entry.adjustments ?? []).filter((item) => item.kind === "ADITIVO").reduce((sum, item) => sum + item.value, 0);
+                const discounts = (entry.adjustments ?? []).filter((item) => item.kind === "DESCONTO").reduce((sum, item) => sum + item.value, 0);
+                const status = periodStatuses[`${entry.storeName}-${entry.month}`] === "fechado" ? "Fechado" : "Estimado";
+                return <TableRow key={entry.id}><TableCell>{entry.storeName}</TableCell><TableCell>{entry.positionName ?? "—"}</TableCell><TableCell>{entry.collaborator}</TableCell><TableCell className="font-mono text-[10px]">{entry.employeeId ?? "Legado"}</TableCell><TableCell className="text-right">{brl(entry.totalVr)}</TableCell><TableCell className="text-right">{brl(entry.totalVt)}</TableCell><TableCell className="text-right">{brl(additions)}</TableCell><TableCell className="text-right">{brl(discounts)}</TableCell><TableCell className="text-right font-semibold">{brl(entry.totalBeneficios)}</TableCell><TableCell>{status}</TableCell></TableRow>;
+              })}</TableBody></Table></div></CardContent>
+            </Card>
             {/* Resumo Consolidado do Mês Atual Selecionado */}
             <Card>
               <CardHeader className="pb-3">

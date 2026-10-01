@@ -438,6 +438,7 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
     const newRecord: BenefitEntry = {
       id: entryId,
       employeeId: employee.id,
+      storeId: store.id,
       positionId: employee.position_id ?? undefined,
       positionName: (employee.positions as unknown as { name?: string } | null)?.name ?? undefined,
       storeName: store.name,

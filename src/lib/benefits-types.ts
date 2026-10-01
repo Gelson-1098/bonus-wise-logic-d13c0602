@@ -1,6 +1,7 @@
 export type BenefitEntry = {
   id: string;
   employeeId?: string | undefined;
+  storeId?: string | undefined;
   positionId?: string | undefined;
   positionName?: string | undefined;
   storeName: string;
