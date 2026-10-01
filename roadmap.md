@@ -46,4 +46,4 @@
 - [x] Implementar ocorrências, modalidades de transporte e ajustes com memória histórica
 - [x] Implementar zeramento, reativação e desfazer persistente com auditoria
 - [x] Aperfeiçoar consolidado, Excel e WhatsApp multiloja
-- [ ] Validar cálculos, persistência, duplicidade, fechamento e permissões
+- [x] Validar cálculos, persistência, duplicidade, fechamento e permissões
