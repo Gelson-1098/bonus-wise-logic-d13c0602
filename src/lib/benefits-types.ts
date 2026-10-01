@@ -1,8 +1,8 @@
 export type BenefitEntry = {
   id: string;
-  employeeId?: string;
-  positionId?: string;
-  positionName?: string;
+  employeeId?: string | undefined;
+  positionId?: string | undefined;
+  positionName?: string | undefined;
   storeName: string;
   collaborator: string;
   year: number;
@@ -18,14 +18,14 @@ export type BenefitEntry = {
   totalVt: number;
   aditivoVt: number;
   aditivoVr: number;
-  transportMode?: "onibus_mensal" | "combo_mensal" | "onibus_diario" | "personalizado";
-  occurrences?: BenefitOccurrence[];
-  adjustments?: BenefitAdjustment[];
-  zeroed?: boolean;
-  zeroedReason?: string;
-  zeroedAt?: string;
-  zeroedBy?: string;
-  originalCalculation?: BenefitCalculationSnapshot;
+  transportMode?: "onibus_mensal" | "combo_mensal" | "onibus_diario" | "personalizado" | undefined;
+  occurrences?: BenefitOccurrence[] | undefined;
+  adjustments?: BenefitAdjustment[] | undefined;
+  zeroed?: boolean | undefined;
+  zeroedReason?: string | undefined;
+  zeroedAt?: string | undefined;
+  zeroedBy?: string | undefined;
+  originalCalculation?: BenefitCalculationSnapshot | undefined;
   obs: string;
   totalBeneficios: number;
 };
@@ -36,8 +36,8 @@ export type BenefitOccurrence = {
   days: number;
   note: string;
   deductFromDueDays: boolean;
-  createdBy?: string;
-  createdAt?: string;
+  createdBy?: string | undefined;
+  createdAt?: string | undefined;
 };
 
 export type BenefitAdjustment = {

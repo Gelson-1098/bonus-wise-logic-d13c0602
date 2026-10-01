@@ -159,7 +159,7 @@ const scopeSchema = z.object({
 
 const entrySchema = z.object({
   id: z.string().optional(),
-  employeeId: z.string().uuid(),
+  employeeId: z.string().uuid().optional(),
   storeName: z.string().trim().min(1),
   collaborator: z.string().trim().min(1),
   year: z.number().int().min(2000).max(2100),
@@ -405,9 +405,16 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
     const store = await resolveAuthorizedStore(context, data.storeName);
     await assertPeriodEditable({ year: data.year, month: data.month, storeName: store.name, isMaster: store.isMaster });
     const { admin, settingKey, entries } = await loadStoreEntries(data.year, store.name);
-    const employeeResult = await admin.from("employees").select("id,full_name,position_id,positions(name)").eq("id", data.employeeId).maybeSingle();
-    if (employeeResult.error || !employeeResult.data) throw new Error("Funcionário não encontrado no cadastro oficial.");
-    const duplicate = entries.find((entry) => entry.month === data.month && entry.employeeId === data.employeeId && entry.id !== data.id);
+    const employeeQuery = admin.from("employees").select("id,full_name,position_id,positions(name)").eq("active", true);
+    const employeeResult = data.employeeId
+      ? await employeeQuery.eq("id", data.employeeId).maybeSingle()
+      : await employeeQuery.eq("full_name", data.collaborator).limit(2);
+    if (employeeResult.error) throw new Error("Não foi possível validar o funcionário oficial.");
+    const employee = Array.isArray(employeeResult.data)
+      ? employeeResult.data.length === 1 ? employeeResult.data[0] : null
+      : employeeResult.data;
+    if (!employee) throw new Error("Selecione um funcionário único do cadastro oficial.");
+    const duplicate = entries.find((entry) => entry.month === data.month && entry.employeeId === employee.id && entry.id !== data.id);
     if (duplicate) throw new Error("Este funcionário já possui lançamento nesta loja e competência.");
     const now = new Date().toISOString();
     const occurrences: BenefitOccurrence[] = data.occurrences.map((occurrence) => ({
@@ -428,11 +435,11 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
     const entryId = data.id || crypto.randomUUID();
     const newRecord: BenefitEntry = {
       id: entryId,
-      employeeId: data.employeeId,
-      positionId: employeeResult.data.position_id ?? undefined,
-      positionName: (employeeResult.data.positions as unknown as { name?: string } | null)?.name ?? undefined,
+      employeeId: employee.id,
+      positionId: employee.position_id ?? undefined,
+      positionName: (employee.positions as unknown as { name?: string } | null)?.name ?? undefined,
       storeName: store.name,
-      collaborator: employeeResult.data.full_name,
+      collaborator: employee.full_name,
       year: data.year,
       month: data.month,
       diasMes,
