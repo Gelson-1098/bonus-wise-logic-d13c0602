@@ -241,12 +241,14 @@ export const listBenefitEmployees = createServerFn({ method: "GET" })
     const loaded = await loadStoreEntries(data.year, store.name);
     const linkedIds = new Set(loaded.entries.filter((entry) => entry.month === data.month).map((entry) => entry.employeeId).filter(Boolean));
     const term = normalizeName(data.search);
-    const employeesResult = await loaded.admin
+    let employeesQuery = loaded.admin
       .from("employees")
       .select("id,full_name,registration,store_id,position_id,positions(name)")
       .eq("active", true)
       .order("full_name")
       .limit(300);
+    if (!store.isMaster) employeesQuery = employeesQuery.eq("store_id", store.id);
+    const employeesResult = await employeesQuery;
     if (employeesResult.error) throw new Error("Não foi possível carregar os funcionários oficiais.");
     return (employeesResult.data ?? [])
       .map((employee: any) => ({
