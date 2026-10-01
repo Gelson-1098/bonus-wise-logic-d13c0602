@@ -12,6 +12,8 @@ import {
   Pencil,
   Trash2,
   KeyRound,
+  LockKeyhole,
+  MessageCircle,
   MoreHorizontal,
   RefreshCw,
   Search,
@@ -60,7 +62,7 @@ import {
   deactivateUser,
   deleteUser,
   diagnoseUserAccess,
-  getDefaultPasswordStatus,
+  getUserTemporaryPassword,
   listUsers,
   resetUserPassword,
   updateUser,
@@ -190,7 +192,7 @@ function StorePicker({
 function UsuariosPage() {
   const queryClient = useQueryClient();
   const fetchUsers = useServerFn(listUsers);
-  const fetchPasswordStatus = useServerFn(getDefaultPasswordStatus);
+  const fetchTemporaryPassword = useServerFn(getUserTemporaryPassword);
   const create = useServerFn(createUser);
   const setRole = useServerFn(updateUserRole);
   const setStores = useServerFn(updateUserStores);
@@ -203,11 +205,15 @@ function UsuariosPage() {
 
   const [openNew, setOpenNew] = useState(false);
   const [created, setCreated] = useState<null | {
+    userId: string;
     full_name: string;
     email: string;
+    temporary_password: string;
     role: AppRoleValue;
     stores: string[];
+    mode: "created" | "reset";
   }>(null);
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, string>>({});
   const [confirm, setConfirm] = useState<null | {
     title: string;
     description: string;
@@ -236,10 +242,6 @@ function UsuariosPage() {
   const [statusFilter, setStatusFilter] = useState<string>("todos");
 
   const usersQuery = useQuery({ queryKey: ["admin-users"], queryFn: () => fetchUsers({}) });
-  const passwordStatus = useQuery({
-    queryKey: ["default-password-status"],
-    queryFn: () => fetchPasswordStatus({}),
-  });
   const storesQuery = useQuery({
     queryKey: ["admin-stores"],
     queryFn: async () => {
@@ -264,13 +266,16 @@ function UsuariosPage() {
 
   const createMutation = useMutation({
     mutationFn: (values: CreateUserInput) => create({ data: values }),
-    onSuccess: (_res, values) => {
+    onSuccess: (res, values) => {
       toast.success("Usuário criado com sucesso.");
       setCreated({
+        userId: res.user_id,
         full_name: values.full_name,
         email: values.email,
+        temporary_password: res.temporary_password,
         role: values.role,
         stores: values.role === "master" ? [] : values.store_ids.map(storeName),
+        mode: "created",
       });
       setOpenNew(false);
       form.reset({ full_name: "", email: "", role: "gerente", store_ids: [] });
@@ -290,6 +295,35 @@ function UsuariosPage() {
         description: err instanceof Error ? err.message : undefined,
       });
     }
+  }
+
+  async function copyText(text: string, success: string) {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+    else {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+    toast.success(success);
+  }
+
+  function accessMessage(value: NonNullable<typeof created>) {
+    return [
+      `Olá, ${value.full_name}.`,
+      "",
+      "Seu acesso ao sistema foi criado.",
+      "",
+      `🔐 Login: ${value.email}`,
+      `🔑 Senha inicial: ${value.temporary_password}`,
+      `🌐 Acesso: ${window.location.origin}/auth`,
+      "",
+      "No primeiro acesso, altere sua senha para uma senha pessoal.",
+    ].join("\n");
   }
 
   const users = usersQuery.data ?? [];
@@ -363,18 +397,6 @@ function UsuariosPage() {
             icon={<Users className="size-[18px]" />}
           />
         </div>
-
-        {passwordStatus.isSuccess && !passwordStatus.data?.configured && (
-          <Card className="border-destructive/40">
-            <CardContent className="flex flex-wrap items-center gap-3 py-4 text-sm">
-              <KeyRound className="size-4 text-destructive" />
-              <span>
-                Nenhuma senha padrão configurada. Defina-a em Administração &gt; Configurações &gt;
-                Segurança antes de criar usuários.
-              </span>
-            </CardContent>
-          </Card>
-        )}
 
         <Card>
           <CardHeader className="gap-3 pb-3">
@@ -462,6 +484,7 @@ function UsuariosPage() {
                       <th className="px-2 py-2">Papel</th>
                       <th className="px-2 py-2">Lojas</th>
                       <th className="px-2 py-2">Status</th>
+                      <th className="px-2 py-2">Acesso</th>
                       <th className="px-2 py-2">Último acesso</th>
                       <th className="px-2 py-2">Criado em</th>
                       <th className="px-2 py-2 text-right">Ações</th>
@@ -477,6 +500,57 @@ function UsuariosPage() {
                             <Badge variant="secondary">{ROLE_LABEL[u.role]}</Badge>
                           ) : (
                             <Badge variant="outline">Sem papel</Badge>
+                          )}
+                        </td>
+                        <td className="px-2 py-2">
+                          {u.has_temp_password ? (
+                            <div className="flex items-center gap-1">
+                              <span className="font-mono text-xs">
+                                {visiblePasswords[u.id] ?? "••••••••••"}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Visualizar senha temporária"
+                                onClick={async () => {
+                                  if (visiblePasswords[u.id]) {
+                                    setVisiblePasswords((current) => {
+                                      const next = { ...current };
+                                      delete next[u.id];
+                                      return next;
+                                    });
+                                    return;
+                                  }
+                                  const result = await fetchTemporaryPassword({ data: { user_id: u.id } });
+                                  if (!result.temporary_password) {
+                                    toast.info("A senha temporária não está mais disponível.");
+                                    return;
+                                  }
+                                  setVisiblePasswords((current) => ({ ...current, [u.id]: result.temporary_password ?? "" }));
+                                }}
+                              >
+                                <Eye className="size-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Copiar senha temporária"
+                                onClick={async () => {
+                                  const result = await fetchTemporaryPassword({ data: { user_id: u.id } });
+                                  if (!result.temporary_password) {
+                                    toast.info("A senha temporária não está mais disponível.");
+                                    return;
+                                  }
+                                  await copyText(result.temporary_password, "Senha temporária copiada.");
+                                }}
+                              >
+                                <Copy className="size-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              <LockKeyhole className="size-3.5" /> Senha pessoal ativa
+                            </span>
                           )}
                         </td>
                         <td className="px-2 py-2">
@@ -577,17 +651,19 @@ function UsuariosPage() {
                                 onClick={() =>
                                   setConfirm({
                                     title: "Redefinir senha",
-                                    description:
-                                      "Redefinir a senha deste usuário para a senha padrão atual?",
+                                    description: "Gerar uma nova senha temporária para este usuário?",
                                       run: async () => {
                                         const result = await resetPassword({ data: { user_id: u.id } });
-                                        const { error } = await supabase.auth.resetPasswordForEmail(result.email, {
-                                          redirectTo: `${window.location.origin}/reset-password`,
+                                      setCreated({
+                                        userId: u.id,
+                                        full_name: u.full_name ?? "Usuário",
+                                        email: result.email,
+                                        temporary_password: result.temporary_password,
+                                        role: u.role ?? "gerente",
+                                        stores: u.role === "master" ? [] : u.store_ids.map(storeName),
+                                        mode: "reset",
                                         });
-                                        if (error) throw new Error("Não foi possível enviar o e-mail de recuperação.");
-                                        toast.success("Recuperação iniciada.", {
-                                          description: "O usuário receberá um link para definir uma nova senha.",
-                                        });
+                                      toast.success("Nova senha temporária gerada.");
                                         await queryClient.invalidateQueries({ queryKey: ["admin-users"] });
                                       },
                                   })
@@ -659,7 +735,7 @@ function UsuariosPage() {
           <DialogHeader>
             <DialogTitle>Novo usuário</DialogTitle>
             <DialogDescription>
-              A senha padrão atual será utilizada. Ela é definida em Configurações &gt; Segurança.
+              Uma senha temporária individual será gerada e exibida após a criação.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -722,8 +798,7 @@ function UsuariosPage() {
               </div>
             )}
             <p className="flex items-center gap-2 rounded-md bg-secondary p-3 text-xs text-muted-foreground">
-              <KeyRound className="size-4" /> Senha: •••••••• — senha padrão definida pela
-              Administração.
+              <KeyRound className="size-4" /> O usuário deverá trocar a senha temporária no primeiro acesso.
             </p>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpenNew(false)}>
@@ -741,8 +816,8 @@ function UsuariosPage() {
       <Dialog open={!!created} onOpenChange={(o) => !o && setCreated(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Usuário criado com sucesso</DialogTitle>
-            <DialogDescription>Repasse as credenciais ao usuário.</DialogDescription>
+            <DialogTitle>{created?.mode === "reset" ? "Senha resetada" : "Acesso criado"}</DialogTitle>
+            <DialogDescription>Repasse a credencial temporária ao usuário antes de fechar.</DialogDescription>
           </DialogHeader>
           {created && (
             <div className="space-y-1 text-sm">
@@ -759,30 +834,14 @@ function UsuariosPage() {
                 <span className="text-muted-foreground">Loja:</span>{" "}
                 {created.stores.length ? created.stores.join(", ") : "Acesso global"}
               </p>
-              <p>
-                <span className="text-muted-foreground">Senha:</span> •••••••••• (senha padrão da
-                Administração)
-              </p>
+              <p><span className="text-muted-foreground">Senha inicial:</span> <strong className="font-mono">{created.temporary_password}</strong></p>
+              <p><span className="text-muted-foreground">Link de acesso:</span> {window.location.origin}/auth</p>
             </div>
           )}
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (!created) return;
-                const text = [
-                  `Nome: ${created.full_name}`,
-                  `E-mail: ${created.email}`,
-                  `Papel: ${ROLE_LABEL[created.role]}`,
-                  `Loja: ${created.stores.length ? created.stores.join(", ") : "Acesso global"}`,
-                  "Senha: a senha padrão informada pela Administração",
-                ].join("\n");
-                void navigator.clipboard.writeText(text);
-                toast.success("Credenciais copiadas.");
-              }}
-            >
-              <Copy className="size-4" /> Copiar credenciais
-            </Button>
+            <Button variant="outline" onClick={() => created && copyText(created.temporary_password, "Senha temporária copiada.")}><Copy className="size-4" /> Copiar senha</Button>
+            <Button variant="outline" onClick={() => created && copyText(accessMessage(created), "Acesso copiado.")}><Copy className="size-4" /> Copiar acesso</Button>
+            <Button variant="outline" onClick={() => created && window.open(`https://wa.me/?text=${encodeURIComponent(accessMessage(created))}`, "_blank", "noopener,noreferrer")}><MessageCircle className="size-4" /> WhatsApp</Button>
             <Button onClick={() => setCreated(null)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>

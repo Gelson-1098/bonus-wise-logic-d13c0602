@@ -4,9 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { Download } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { transitionPeriod } from "@/lib/bonus.functions";
+import { getBenefitExportData } from "@/lib/benefits.functions";
+import { createBenefitsWorkbook } from "@/lib/benefits-export";
 import { listPositionsBasic } from "@/lib/rules.functions";
 import { AppShell } from "@/components/app-shell";
 import { PeriodPicker } from "@/components/period-picker";
@@ -15,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -59,10 +63,42 @@ function PeriodosPage() {
   const [note, setNote] = useState("");
   const transition = useServerFn(transitionPeriod);
   const fetchPositions = useServerFn(listPositionsBasic);
+  const fetchBenefitExport = useServerFn(getBenefitExportData);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportStart, setExportStart] = useState({ month: period.month, year: period.year });
+  const [exportEnd, setExportEnd] = useState({ month: period.month, year: period.year });
+  const [exportStores, setExportStores] = useState<string[]>([]);
+  const [exportStatus, setExportStatus] = useState<"todos" | "aprovados" | "pendentes" | "reprovados">("todos");
 
   const { data: positions } = useQuery({
     queryKey: ["positions-basic"],
     queryFn: () => fetchPositions(),
+  });
+
+  const { data: authorizedStores } = useQuery({
+    queryKey: ["authorized-stores-export", access?.storeIds, isMaster],
+    enabled: !!access,
+    queryFn: async () => {
+      let query = supabase.from("stores").select("id,name").eq("active", true).order("name");
+      if (!isMaster) query = query.in("id", access?.storeIds ?? []);
+      const result = await query;
+      if (result.error) throw new Error(result.error.message);
+      return result.data ?? [];
+    },
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: () => fetchBenefitExport({ data: {
+      startYear: exportStart.year, startMonth: exportStart.month,
+      endYear: exportEnd.year, endMonth: exportEnd.month,
+      storeNames: exportStores, status: exportStatus,
+    } }),
+    onSuccess: (records) => {
+      XLSX.writeFile(createBenefitsWorkbook(records), `beneficios-${exportStart.month}-${exportStart.year}-a-${exportEnd.month}-${exportEnd.year}.xlsx`);
+      toast.success("Arquivo gerado com os valores oficiais.");
+      setExportOpen(false);
+    },
+    onError: (error: Error) => toast.error("Não foi possível gerar o arquivo", { description: error.message }),
   });
 
   const { data, isLoading } = useQuery({
@@ -173,6 +209,15 @@ function PeriodosPage() {
       actions={<PeriodPicker month={period.month} year={period.year} onChange={setPeriod} />}
     >
       <div className="space-y-4">
+        <Card>
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-base">Exportação financeira</CardTitle>
+              <p className="mt-1 text-xs text-muted-foreground">Benefícios oficiais por período, loja e situação.</p>
+            </div>
+            <Button variant="outline" onClick={() => setExportOpen(true)}><FileSpreadsheet className="size-4" /> Exportar Excel</Button>
+          </CardHeader>
+        </Card>
         {isLoading && <p className="text-sm text-muted-foreground">Carregando…</p>}
         {!isLoading && rows.length === 0 && (
           <Card>
@@ -267,6 +312,44 @@ function PeriodosPage() {
               >
                 Confirmar
               </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Exportar benefícios</DialogTitle></DialogHeader>
+          <div className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label>Período inicial</Label><PeriodPicker month={exportStart.month} year={exportStart.year} onChange={setExportStart} /></div>
+              <div className="space-y-2"><Label>Período final</Label><PeriodPicker month={exportEnd.month} year={exportEnd.year} onChange={setExportEnd} /></div>
+            </div>
+            <div className="space-y-2">
+              <Label>Situação</Label>
+              <Select value={exportStatus} onValueChange={(value) => setExportStatus(value as typeof exportStatus)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem><SelectItem value="aprovados">Aprovados</SelectItem>
+                  <SelectItem value="pendentes">Pendentes</SelectItem><SelectItem value="reprovados">Reprovados</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Fechado corresponde a Aprovado; Estimado corresponde a Pendente. Benefícios não possuem estado Reprovado.</p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3"><Label>Lojas</Label><Button variant="ghost" size="sm" onClick={() => setExportStores([])}>Todas as autorizadas</Button></div>
+              <div className="grid max-h-48 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">
+                {(authorizedStores ?? []).map((store) => (
+                  <label key={store.id} className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={exportStores.includes(store.name)} onCheckedChange={(checked) => setExportStores((current) => checked ? [...current, store.name] : current.filter((name) => name !== store.name))} />
+                    {store.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setExportOpen(false)}>Cancelar</Button>
+              <Button disabled={exportMutation.isPending} onClick={() => exportMutation.mutate()}><Download className="size-4" /> {exportMutation.isPending ? "Gerando…" : "Gerar arquivo"}</Button>
             </div>
           </div>
         </DialogContent>

@@ -33,3 +33,9 @@
 ## Regras mensais de 2026
 - [x] Replicar as regras vigentes para todos os meses de 2026, preservando os escopos Global, Spoleto e Aeroporto
 - [x] Vincular somente períodos ainda sem regra e validar que os lançamentos foram desbloqueados
+
+## Credenciais temporárias e exportação Excel
+- [x] Implementar credenciais temporárias individuais e descarte após troca
+- [x] Atualizar criação, reset, cópia e WhatsApp na Central de Usuários
+- [x] Implementar exportação Excel em quatro abas com filtros e autorização
+- [ ] Validar acesso, reset, permissões, arquivo e compilação

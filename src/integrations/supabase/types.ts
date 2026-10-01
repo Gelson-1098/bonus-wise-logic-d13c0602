@@ -1122,6 +1122,10 @@ export type Database = {
     }
     Functions: {
       can_access_store: { Args: { _store_id: string }; Returns: boolean }
+      clear_user_temp_password: {
+        Args: { _user_id: string }
+        Returns: undefined
+      }
       clone_bonus_rule_month: {
         Args: {
           _month: number
@@ -1133,6 +1137,7 @@ export type Database = {
       }
       get_security_setting: { Args: { _key: string }; Returns: string }
       get_security_setting_meta: { Args: { _key: string }; Returns: string }
+      get_user_temp_password: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1152,6 +1157,10 @@ export type Database = {
       }
       set_security_setting: {
         Args: { _by: string; _key: string; _value: string }
+        Returns: undefined
+      }
+      set_user_temp_password: {
+        Args: { _by: string; _password: string; _user_id: string }
         Returns: undefined
       }
     }

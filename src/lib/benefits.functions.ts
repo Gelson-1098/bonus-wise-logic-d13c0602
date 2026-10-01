@@ -181,6 +181,81 @@ const parameterSchema = z.object({
   active: z.boolean(),
 });
 
+const exportSchema = z.object({
+  startYear: z.number().int().min(2000).max(2100),
+  startMonth: z.number().int().min(1).max(12),
+  endYear: z.number().int().min(2000).max(2100),
+  endMonth: z.number().int().min(1).max(12),
+  storeNames: z.array(z.string().trim().min(1)).default([]),
+  status: z.enum(["todos", "aprovados", "pendentes", "reprovados"]),
+});
+
+async function loadEntriesForYear(context: AuthenticatedContext, year: number) {
+  const authorized = await listAuthorizedStores(context);
+  const authorizedStoreIds = new Set(authorized.stores.map((store) => store.id));
+  const admin = await getAdmin();
+  const result = await admin.from("app_settings").select("key,value").like("key", `benefits_data_${year}%`);
+  if (result.error) throw new Error("Não foi possível carregar os benefícios para exportação.");
+  const rows = result.data ?? [];
+  const legacyKey = `benefits_data_${year}`;
+  const legacy = rows.find((row) => row.key === legacyKey);
+  const perStore = rows.filter((row) => row.key !== legacyKey);
+  const overriddenKeys = new Set(perStore.map((row) => row.key));
+  const merged: BenefitEntry[] = [];
+  if (Array.isArray(legacy?.value)) {
+    for (const entry of legacy.value as unknown as BenefitEntry[]) {
+      if (!overriddenKeys.has(storeSettingKey(year, entry.storeName))) merged.push(entry);
+    }
+  }
+  for (const row of perStore) if (Array.isArray(row.value)) merged.push(...(row.value as unknown as BenefitEntry[]));
+  return {
+    entries: merged.filter((entry) => {
+      const resolution = resolveStore({ name: entry.storeName });
+      const store = resolution.status === "ok" && resolution.store ? findDbStore(resolution.store, authorized.stores) : null;
+      return entry.year === year && !!store && authorizedStoreIds.has(store.id);
+    }),
+    stores: authorized.stores,
+  };
+}
+
+/** Entrega os valores persistidos e status reais para o arquivo financeiro. */
+export const getBenefitExportData = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => exportSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const start = data.startYear * 12 + data.startMonth;
+    const end = data.endYear * 12 + data.endMonth;
+    if (end < start) throw new Error("O período final deve ser igual ou posterior ao período inicial.");
+    if (end - start > 23) throw new Error("Selecione um intervalo de no máximo 24 meses.");
+
+    const requestedStores = new Set(data.storeNames.map(normalizeName));
+    const records: Array<BenefitEntry & { storeCode: string; status: "Aprovado" | "Pendente" }> = [];
+    for (let year = data.startYear; year <= data.endYear; year += 1) {
+      const loaded = await loadEntriesForYear(context, year);
+      const admin = await getAdmin();
+      const statusResult = await admin.from("app_settings").select("value").eq("key", `benefits_period_statuses_${year}`).maybeSingle();
+      if (statusResult.error) throw new Error("Não foi possível validar o status dos benefícios.");
+      const statuses = statusResult.data?.value && typeof statusResult.data.value === "object" && !Array.isArray(statusResult.data.value)
+        ? statusResult.data.value as Record<string, "estimado" | "fechado">
+        : {};
+
+      for (const entry of loaded.entries) {
+        const serial = entry.year * 12 + entry.month;
+        if (serial < start || serial > end) continue;
+        if (requestedStores.size && !requestedStores.has(normalizeName(entry.storeName))) continue;
+        const rawStatus = statuses[`${entry.storeName}-${entry.month}`] ?? "estimado";
+        const status = rawStatus === "fechado" ? "Aprovado" : "Pendente";
+        if (data.status === "aprovados" && status !== "Aprovado") continue;
+        if (data.status === "pendentes" && status !== "Pendente") continue;
+        if (data.status === "reprovados") continue;
+        const resolution = resolveStore({ name: entry.storeName });
+        const store = resolution.status === "ok" && resolution.store ? findDbStore(resolution.store, loaded.stores) : null;
+        records.push({ ...entry, storeCode: store?.code ?? "", status });
+      }
+    }
+    return records.sort((a, b) => a.year - b.year || a.month - b.month || a.storeName.localeCompare(b.storeName) || a.collaborator.localeCompare(b.collaborator));
+  });
+
 /** Retorna apenas lançamentos das lojas autorizadas ao usuário. */
 export const getBenefitEntries = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
