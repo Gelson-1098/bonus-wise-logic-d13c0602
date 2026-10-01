@@ -421,6 +421,7 @@ export async function deleteManagedUser(userId: string, actor: ActorInfo) {
     .eq("id", userId)
     .maybeSingle();
   await audit(actor, "USER_DELETED", userId, `Acesso do usuário ${profile?.email ?? userId} excluído.`);
+  await clearTemporaryPassword(userId);
   const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
   if (error) throw new Error("Não foi possível excluir o usuário.");
 }

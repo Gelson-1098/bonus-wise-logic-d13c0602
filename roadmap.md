@@ -35,7 +35,7 @@
 - [x] Vincular somente períodos ainda sem regra e validar que os lançamentos foram desbloqueados
 
 ## Credenciais temporárias e exportação Excel
-- [ ] Implementar credenciais temporárias individuais e descarte após troca
-- [ ] Atualizar criação, reset, cópia e WhatsApp na Central de Usuários
-- [ ] Implementar exportação Excel em quatro abas com filtros e autorização
+- [x] Implementar credenciais temporárias individuais e descarte após troca
+- [x] Atualizar criação, reset, cópia e WhatsApp na Central de Usuários
+- [x] Implementar exportação Excel em quatro abas com filtros e autorização
 - [ ] Validar acesso, reset, permissões, arquivo e compilação
