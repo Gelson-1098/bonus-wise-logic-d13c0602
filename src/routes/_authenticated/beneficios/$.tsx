@@ -244,6 +244,10 @@ export function BeneficiosPage() {
   const [zeroDialog, setZeroDialog] = useState<{ entry: BenefitEntry; zeroed: boolean } | null>(null);
   const [zeroReason, setZeroReason] = useState("");
   const [confirmUndo, setConfirmUndo] = useState(false);
+  const [consolidatedStores, setConsolidatedStores] = useState<string[]>([]);
+  const [consolidatedPosition, setConsolidatedPosition] = useState("TODOS");
+  const [consolidatedSearch, setConsolidatedSearch] = useState("");
+  const [consolidatedStatus, setConsolidatedStatus] = useState<"todos" | "estimado" | "fechado">("todos");
 
   const entriesQuery = useQuery({
     queryKey: ["benefit-entries", year],
@@ -395,6 +399,16 @@ export function BeneficiosPage() {
 
     return matrix;
   }, [allEntries, visibleStores]);
+
+  const positionOptions = useMemo(() => Array.from(new Set(allEntries.map((entry) => entry.positionName).filter((value): value is string => !!value))).sort(), [allEntries]);
+  const consolidatedEntries = useMemo(() => allEntries.filter((entry) => {
+    if (entry.month !== month) return false;
+    if (consolidatedStores.length && !consolidatedStores.includes(entry.storeName)) return false;
+    if (consolidatedPosition !== "TODOS" && entry.positionName !== consolidatedPosition) return false;
+    if (consolidatedSearch && !normalizeName(`${entry.collaborator} ${entry.employeeId ?? ""}`).includes(normalizeName(consolidatedSearch))) return false;
+    const status = periodStatuses[`${entry.storeName}-${entry.month}`] === "fechado" ? "fechado" : "estimado";
+    return consolidatedStatus === "todos" || status === consolidatedStatus;
+  }), [allEntries, month, consolidatedStores, consolidatedPosition, consolidatedSearch, consolidatedStatus, periodStatuses]);
 
   // Total per month across all stores
   const grandMonthlyTotals = useMemo(() => {
@@ -578,6 +592,19 @@ export function BeneficiosPage() {
         description: error instanceof Error ? error.message : undefined,
       });
     }
+  }
+
+  async function handleCopyMultiStore() {
+    if (!consolidatedEntries.length) return toast.error("Não há dados nos filtros selecionados.");
+    const stores = Array.from(new Set(consolidatedEntries.map((entry) => entry.storeName))).sort();
+    const blocks = stores.map((storeName) => {
+      const entries = consolidatedEntries.filter((entry) => entry.storeName === storeName);
+      const summary = entries.reduce((acc, entry) => ({ totalVr: acc.totalVr + entry.totalVr, totalVt: acc.totalVt + entry.totalVt, totalAditivos: acc.totalAditivos + entry.aditivoVr + entry.aditivoVt, totalBeneficios: acc.totalBeneficios + entry.totalBeneficios }), { totalVr: 0, totalVt: 0, totalAditivos: 0, totalBeneficios: 0 });
+      return consolidatedWhatsAppText({ entries, storeName, monthLabel: currentMonthLabel, year, summary });
+    });
+    const total = consolidatedEntries.reduce((sum, entry) => sum + entry.totalBeneficios, 0);
+    try { await copyText(`${blocks.join("\n\n")}\n\n*TOTAL GERAL: ${brl(total)}*`); toast.success("Consolidado multiloja copiado para o WhatsApp!"); }
+    catch (error) { toast.error("Não foi possível copiar.", { description: error instanceof Error ? error.message : undefined }); }
   }
 
   return (
@@ -1039,6 +1066,15 @@ export function BeneficiosPage() {
           {/* TAB 2: VISÃO CONSOLIDADA MENSAL E ANUAL                                  */}
           {/* ========================================================================= */}
           <TabsContent value="consolidado" className="space-y-6">
+            <Card>
+              <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="space-y-1"><Label>Lojas</Label><Select value={consolidatedStores.length === 1 ? consolidatedStores[0] : "TODAS"} onValueChange={(value) => setConsolidatedStores(value === "TODAS" ? [] : [value])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TODAS">Todas as lojas</SelectItem>{availableStores.map((store) => <SelectItem key={store} value={store}>{store}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1"><Label>Cargo</Label><Select value={consolidatedPosition} onValueChange={setConsolidatedPosition}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TODOS">Todos os cargos</SelectItem>{positionOptions.map((position) => <SelectItem key={position} value={position}>{position}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1"><Label>Colaborador</Label><Input value={consolidatedSearch} onChange={(event) => setConsolidatedSearch(event.target.value)} placeholder="Nome ou ID" /></div>
+                <div className="space-y-1"><Label>Status</Label><Select value={consolidatedStatus} onValueChange={(value) => setConsolidatedStatus(value as typeof consolidatedStatus)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="estimado">Estimado</SelectItem><SelectItem value="fechado">Fechado</SelectItem></SelectContent></Select></div>
+                <div className="flex items-end"><Button variant="outline" className="w-full" onClick={() => void handleCopyMultiStore()} disabled={!consolidatedEntries.length}><Copy className="size-4" /> Copiar WhatsApp</Button></div>
+              </CardContent>
+            </Card>
             {/* Resumo Consolidado do Mês Atual Selecionado */}
             <Card>
               <CardHeader className="pb-3">
@@ -1068,8 +1104,8 @@ export function BeneficiosPage() {
                     </TableHeader>
                     <TableBody>
                       {visibleStores.map((st) => {
-                        const stEntries = allEntries.filter(
-                          (e) => e.month === month && e.storeName.toLowerCase() === st.name.toLowerCase()
+                          const stEntries = consolidatedEntries.filter(
+                            (e) => e.storeName.toLowerCase() === st.name.toLowerCase()
                         );
                         let vr = 0;
                         let vt = 0;
