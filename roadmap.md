@@ -41,7 +41,7 @@
 - [x] Validar acesso, reset, permissões, arquivo e compilação
 
 ## Evolução incremental de Benefícios
-- [ ] Auditar persistência, funcionários, permissões e histórico existentes
+- [x] Auditar persistência, funcionários, permissões e histórico existentes
 - [ ] Tornar calendário automático e integrar funcionários oficiais por employee_id
 - [ ] Implementar ocorrências, modalidades de transporte e ajustes com memória histórica
 - [ ] Implementar zeramento, reativação e desfazer persistente com auditoria

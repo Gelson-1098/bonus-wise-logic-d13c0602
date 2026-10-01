@@ -1,5 +1,8 @@
 export type BenefitEntry = {
   id: string;
+  employeeId?: string;
+  positionId?: string;
+  positionName?: string;
   storeName: string;
   collaborator: string;
   year: number;
@@ -15,7 +18,41 @@ export type BenefitEntry = {
   totalVt: number;
   aditivoVt: number;
   aditivoVr: number;
+  transportMode?: "onibus_mensal" | "combo_mensal" | "onibus_diario" | "personalizado";
+  occurrences?: BenefitOccurrence[];
+  adjustments?: BenefitAdjustment[];
+  zeroed?: boolean;
+  zeroedReason?: string;
+  zeroedAt?: string;
+  zeroedBy?: string;
+  originalCalculation?: BenefitCalculationSnapshot;
   obs: string;
+  totalBeneficios: number;
+};
+
+export type BenefitOccurrence = {
+  id: string;
+  type: "FALTA" | "ATESTADO" | "BH" | "OUTRO";
+  days: number;
+  note: string;
+  deductFromDueDays: boolean;
+  createdBy?: string;
+  createdAt?: string;
+};
+
+export type BenefitAdjustment = {
+  id: string;
+  kind: "ADITIVO" | "DESCONTO";
+  category: "VR" | "VT";
+  value: number;
+  description: string;
+};
+
+export type BenefitCalculationSnapshot = {
+  diasDevidos: number;
+  totalVr: number;
+  depositoDiario: number;
+  totalVt: number;
   totalBeneficios: number;
 };
 
@@ -44,6 +81,7 @@ export const DEFAULT_BENEFIT_PARAMETERS: BenefitParameter[] = [
   { id: "vt-sp-onibus", region: "SP", benefitType: "VT", description: "Ônibus SPTrans", valueType: "mensal", defaultValue: 257.53, ruleName: "ÔNIBUS", transportSystem: "SPTRANS", active: true },
   { id: "vt-sp-metro", region: "SP", benefitType: "VT", description: "Sistema Metrô Ferroviário SP", valueType: "mensal", defaultValue: 262.43, ruleName: "SISTEMA METRÔ FERROVIÁRIO", transportSystem: "SPTRANS", active: true },
   { id: "vt-sp-diario", region: "SP", benefitType: "VT", description: "Integração Ônibus + Metrô Diarista", valueType: "diario", defaultValue: 10.28, ruleName: "INTEGRAÇÃO ÔNIBUS + METRÔ", transportSystem: "SPTRANS", active: true },
+  { id: "vt-onibus-diario", region: "GERAL", benefitType: "VT", description: "Ônibus diário", valueType: "diario", defaultValue: 10.60, ruleName: "ÔNIBUS DIÁRIO", active: true },
 
   // VT - GUARULHOS (EMTU)
   { id: "vt-gru-mensal", region: "GRU", benefitType: "VT", description: "Mensal Aeroporto GRU", valueType: "mensal", defaultValue: 315.00, ruleName: "MENSAL GRU", transportSystem: "EMTU", active: true },
