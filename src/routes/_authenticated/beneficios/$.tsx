@@ -595,7 +595,10 @@ export function BeneficiosPage() {
   }
 
   async function handleCopyMultiStore() {
-    if (!consolidatedEntries.length) return toast.error("Não há dados nos filtros selecionados.");
+    if (!consolidatedEntries.length) {
+      toast.error("Não há dados nos filtros selecionados.");
+      return;
+    }
     const stores = Array.from(new Set(consolidatedEntries.map((entry) => entry.storeName))).sort();
     const blocks = stores.map((storeName) => {
       const entries = consolidatedEntries.filter((entry) => entry.storeName === storeName);
@@ -1068,7 +1071,7 @@ export function BeneficiosPage() {
           <TabsContent value="consolidado" className="space-y-6">
             <Card>
               <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
-                <div className="space-y-1"><Label>Lojas</Label><Select value={consolidatedStores.length === 1 ? consolidatedStores[0] : "TODAS"} onValueChange={(value) => setConsolidatedStores(value === "TODAS" ? [] : [value])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TODAS">Todas as lojas</SelectItem>{availableStores.map((store) => <SelectItem key={store} value={store}>{store}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1"><Label>Lojas</Label><Select value={consolidatedStores[0] ?? "TODAS"} onValueChange={(value) => setConsolidatedStores(value === "TODAS" ? [] : [value])}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TODAS">Todas as lojas</SelectItem>{availableStores.map((store) => <SelectItem key={store} value={store}>{store}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-1"><Label>Cargo</Label><Select value={consolidatedPosition} onValueChange={setConsolidatedPosition}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TODOS">Todos os cargos</SelectItem>{positionOptions.map((position) => <SelectItem key={position} value={position}>{position}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-1"><Label>Colaborador</Label><Input value={consolidatedSearch} onChange={(event) => setConsolidatedSearch(event.target.value)} placeholder="Nome ou ID" /></div>
                 <div className="space-y-1"><Label>Status</Label><Select value={consolidatedStatus} onValueChange={(value) => setConsolidatedStatus(value as typeof consolidatedStatus)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="estimado">Estimado</SelectItem><SelectItem value="fechado">Fechado</SelectItem></SelectContent></Select></div>
