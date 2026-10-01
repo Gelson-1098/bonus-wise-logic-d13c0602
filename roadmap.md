@@ -42,8 +42,8 @@
 
 ## Evolução incremental de Benefícios
 - [x] Auditar persistência, funcionários, permissões e histórico existentes
-- [ ] Tornar calendário automático e integrar funcionários oficiais por employee_id
-- [ ] Implementar ocorrências, modalidades de transporte e ajustes com memória histórica
-- [ ] Implementar zeramento, reativação e desfazer persistente com auditoria
-- [ ] Aperfeiçoar consolidado, Excel e WhatsApp multiloja
+- [x] Tornar calendário automático e integrar funcionários oficiais por employee_id
+- [x] Implementar ocorrências, modalidades de transporte e ajustes com memória histórica
+- [x] Implementar zeramento, reativação e desfazer persistente com auditoria
+- [x] Aperfeiçoar consolidado, Excel e WhatsApp multiloja
 - [ ] Validar cálculos, persistência, duplicidade, fechamento e permissões
