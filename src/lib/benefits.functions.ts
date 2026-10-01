@@ -3,7 +3,9 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   DEFAULT_BENEFIT_PARAMETERS,
+  type BenefitAdjustment,
   type BenefitEntry,
+  type BenefitOccurrence,
   type BenefitParameter,
 } from "@/lib/benefits-types";
 import { findDbStore, resolveStore } from "@/lib/store-registry";
@@ -109,12 +111,14 @@ async function auditBenefit(input: {
   oldValue?: string;
   newValue?: string;
   description: string;
+  entityId?: string;
 }) {
   const admin = await getAdmin();
   const result = await admin.from("audit_logs").insert({
     user_id: input.userId,
     action: input.action,
     entity: "benefits",
+    entity_id: input.entityId ?? null,
     store_id: input.storeId ?? null,
     field: input.field ?? null,
     old_value: input.oldValue ?? null,
@@ -137,8 +141,9 @@ export function computeBenefitCalculations(entry: {
   vtMensalista: number;
   aditivoVt: number;
   aditivoVr: number;
+  occurrenceDays?: number;
 }) {
-  const diasDevidos = Math.max(0, Number(entry.diasMes || 0) - Number(entry.folgas || 0));
+  const diasDevidos = Math.max(0, Number(entry.diasMes || 0) - Number(entry.folgas || 0) - Number(entry.occurrenceDays || 0));
   const totalVr = Number(((Number(entry.valorVr || 0) * diasDevidos) + Number(entry.aditivoVr || 0)).toFixed(2));
   const depositoDiario = Number((Number(entry.vtDiarista || 0) * diasDevidos).toFixed(2));
   const totalVt = Number((Number(entry.vtMensalista || 0) + depositoDiario + Number(entry.aditivoVt || 0)).toFixed(2));
@@ -154,19 +159,109 @@ const scopeSchema = z.object({
 
 const entrySchema = z.object({
   id: z.string().optional(),
+  employeeId: z.string().uuid().optional(),
   storeName: z.string().trim().min(1),
   collaborator: z.string().trim().min(1),
   year: z.number().int().min(2000).max(2100),
   month: z.number().int().min(1).max(12),
-  diasMes: z.number().min(0),
   folgas: z.number().min(0),
   valorVr: z.number().min(0),
   vtDiarista: z.number().min(0),
   vtMensalista: z.number().min(0),
   aditivoVt: z.number().default(0),
   aditivoVr: z.number().default(0),
+  transportMode: z.enum(["onibus_mensal", "combo_mensal", "onibus_diario", "personalizado"]).optional(),
+  occurrences: z.array(z.object({
+    id: z.string(),
+    type: z.enum(["FALTA", "ATESTADO", "BH", "OUTRO"]),
+    days: z.number().positive(),
+    note: z.string().trim().min(1),
+    deductFromDueDays: z.boolean(),
+    createdBy: z.string().optional(),
+    createdAt: z.string().optional(),
+  })).default([]),
+  adjustments: z.array(z.object({
+    id: z.string(),
+    kind: z.enum(["ADITIVO", "DESCONTO"]),
+    category: z.enum(["VR", "VT"]),
+    value: z.number().positive(),
+    description: z.string().trim().min(1),
+  })).default([]),
   obs: z.string().default(""),
 });
+
+function calendarDays(year: number, month: number) {
+  return new Date(year, month, 0).getDate();
+}
+
+function adjustmentTotal(adjustments: BenefitAdjustment[], category: "VR" | "VT", fallback: number) {
+  const matching = adjustments.filter((adjustment) => adjustment.category === category);
+  if (!matching.length) return fallback;
+  return matching.reduce((sum, adjustment) => sum + (adjustment.kind === "DESCONTO" ? -adjustment.value : adjustment.value), 0);
+}
+
+async function loadStoreEntries(year: number, storeName: string) {
+  const admin = await getAdmin();
+  const settingKey = storeSettingKey(year, storeName);
+  const result = await admin.from("app_settings").select("value").eq("key", settingKey).maybeSingle();
+  if (result.error) throw new Error("Não foi possível carregar os lançamentos atuais da loja.");
+  return {
+    admin,
+    settingKey,
+    entries: Array.isArray(result.data?.value) ? (result.data.value as unknown as BenefitEntry[]) : [],
+  };
+}
+
+async function assertPeriodEditable(input: { year: number; month: number; storeName: string; isMaster: boolean }) {
+  if (input.isMaster) return;
+  const admin = await getAdmin();
+  const result = await admin.from("app_settings").select("value").eq("key", `benefits_period_statuses_${input.year}`).maybeSingle();
+  if (result.error) throw new Error("Não foi possível validar o fechamento da competência.");
+  const statuses = result.data?.value && typeof result.data.value === "object" && !Array.isArray(result.data.value)
+    ? result.data.value as Record<string, string>
+    : {};
+  if (statuses[`${input.storeName}-${input.month}`] === "fechado") {
+    throw new Error("Esta competência está fechada e não pode ser alterada.");
+  }
+}
+
+const employeeScopeSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+  storeName: z.string().trim().min(1),
+  search: z.string().trim().max(120).default(""),
+});
+
+/** Lista funcionários oficiais sem criar cadastros paralelos. */
+export const listBenefitEmployees = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => employeeScopeSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const store = await resolveAuthorizedStore(context, data.storeName);
+    const loaded = await loadStoreEntries(data.year, store.name);
+    const linkedIds = new Set(loaded.entries.filter((entry) => entry.month === data.month).map((entry) => entry.employeeId).filter(Boolean));
+    const term = normalizeName(data.search);
+    let employeesQuery = loaded.admin
+      .from("employees")
+      .select("id,full_name,registration,store_id,position_id,positions(name)")
+      .eq("active", true)
+      .order("full_name")
+      .limit(300);
+    if (!store.isMaster) employeesQuery = employeesQuery.eq("store_id", store.id);
+    const employeesResult = await employeesQuery;
+    if (employeesResult.error) throw new Error("Não foi possível carregar os funcionários oficiais.");
+    return (employeesResult.data ?? [])
+      .map((employee: any) => ({
+        id: employee.id as string,
+        fullName: employee.full_name as string,
+        registration: employee.registration as string | null,
+        storeId: employee.store_id as string,
+        positionId: employee.position_id as string | null,
+        positionName: (employee.positions as { name?: string } | null)?.name ?? "Sem cargo",
+        alreadyLinked: linkedIds.has(employee.id),
+      }))
+      .filter((employee) => !term || normalizeName(`${employee.fullName} ${employee.registration ?? ""}`).includes(term));
+  });
 
 const parameterSchema = z.object({
   id: z.string(),
@@ -310,23 +405,47 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
   .inputValidator((input) => entrySchema.parse(input))
   .handler(async ({ data, context }) => {
     const store = await resolveAuthorizedStore(context, data.storeName);
-    const admin = await getAdmin();
-    const settingKey = storeSettingKey(data.year, store.name);
-    const readResult = await admin.from("app_settings").select("value").eq("key", settingKey).maybeSingle();
-    if (readResult.error) throw new Error("Não foi possível carregar os lançamentos atuais da loja.");
-
-    const entries = Array.isArray(readResult.data?.value)
-      ? (readResult.data.value as unknown as BenefitEntry[])
-      : [];
-    const calcs = computeBenefitCalculations(data);
+    await assertPeriodEditable({ year: data.year, month: data.month, storeName: store.name, isMaster: store.isMaster });
+    const { admin, settingKey, entries } = await loadStoreEntries(data.year, store.name);
+    const employeeQuery = admin.from("employees").select("id,full_name,position_id,positions(name)").eq("active", true);
+    const employeeResult = data.employeeId
+      ? await employeeQuery.eq("id", data.employeeId).maybeSingle()
+      : await employeeQuery.eq("full_name", data.collaborator).limit(2);
+    if (employeeResult.error) throw new Error("Não foi possível validar o funcionário oficial.");
+    const employee = Array.isArray(employeeResult.data)
+      ? employeeResult.data.length === 1 ? employeeResult.data[0] : null
+      : employeeResult.data;
+    if (!employee) throw new Error("Selecione um funcionário único do cadastro oficial.");
+    const duplicate = entries.find((entry) => entry.month === data.month && entry.employeeId === employee.id && entry.id !== data.id);
+    if (duplicate) throw new Error("Este funcionário já possui lançamento nesta loja e competência.");
+    const now = new Date().toISOString();
+    const occurrences: BenefitOccurrence[] = data.occurrences.map((occurrence) => ({
+      ...occurrence,
+      createdBy: occurrence.createdBy ?? context.userId,
+      createdAt: occurrence.createdAt ?? now,
+    }));
+    const aditivoVr = adjustmentTotal(data.adjustments, "VR", data.aditivoVr);
+    const aditivoVt = adjustmentTotal(data.adjustments, "VT", data.aditivoVt);
+    const diasMes = calendarDays(data.year, data.month);
+    const calcs = computeBenefitCalculations({
+      ...data,
+      diasMes,
+      aditivoVr,
+      aditivoVt,
+      occurrenceDays: occurrences.filter((occurrence) => occurrence.deductFromDueDays).reduce((sum, occurrence) => sum + occurrence.days, 0),
+    });
     const entryId = data.id || crypto.randomUUID();
     const newRecord: BenefitEntry = {
       id: entryId,
+      employeeId: employee.id,
+      storeId: store.id,
+      positionId: employee.position_id ?? undefined,
+      positionName: (employee.positions as unknown as { name?: string } | null)?.name ?? undefined,
       storeName: store.name,
-      collaborator: data.collaborator,
+      collaborator: employee.full_name,
       year: data.year,
       month: data.month,
-      diasMes: data.diasMes,
+      diasMes,
       folgas: data.folgas,
       diasDevidos: calcs.diasDevidos,
       valorVr: data.valorVr,
@@ -335,8 +454,11 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
       vtMensalista: data.vtMensalista,
       depositoDiario: calcs.depositoDiario,
       totalVt: calcs.totalVt,
-      aditivoVt: data.aditivoVt,
-      aditivoVr: data.aditivoVr,
+      aditivoVt,
+      aditivoVr,
+      transportMode: data.transportMode,
+      occurrences,
+      adjustments: data.adjustments,
       obs: data.obs.trim(),
       totalBeneficios: calcs.totalBeneficios,
     };
@@ -360,10 +482,11 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
     await auditBenefit({
       userId: context.userId,
       action: previous ? "edicao_beneficio_colaborador" : "criacao_beneficio_colaborador",
+      entityId: entryId,
       storeId: store.id,
       field: `${store.name} - Mês ${data.month} - ${data.collaborator}`,
-      oldValue: previous ? `VR: ${previous.totalVr} | VT: ${previous.totalVt} | Total: ${previous.totalBeneficios}` : "Novo registro",
-      newValue: `VR: ${newRecord.totalVr} | VT: ${newRecord.totalVt} | Total: ${newRecord.totalBeneficios}`,
+      oldValue: JSON.stringify(previous ?? null),
+      newValue: JSON.stringify(newRecord),
       description: `Lançamento de benefícios confirmado (${data.collaborator} - ${store.name})`,
     });
     return { ok: true, record: newRecord };
@@ -374,15 +497,10 @@ export const deleteBenefitEntry = createServerFn({ method: "POST" })
   .inputValidator((input) => z.object({ id: z.string().min(1), year: z.number().int().min(2000).max(2100), storeName: z.string().trim().min(1) }).parse(input))
   .handler(async ({ data, context }) => {
     const store = await resolveAuthorizedStore(context, data.storeName);
-    const admin = await getAdmin();
-    const settingKey = storeSettingKey(data.year, store.name);
-    const readResult = await admin.from("app_settings").select("value").eq("key", settingKey).maybeSingle();
-    if (readResult.error) throw new Error("Não foi possível carregar os lançamentos atuais da loja.");
-    const entries = Array.isArray(readResult.data?.value)
-      ? (readResult.data.value as unknown as BenefitEntry[])
-      : [];
+    const { admin, settingKey, entries } = await loadStoreEntries(data.year, store.name);
     const target = entries.find((entry) => entry.id === data.id);
     if (!target) throw new Error("Lançamento não encontrado nesta loja.");
+    await assertPeriodEditable({ year: data.year, month: target.month, storeName: store.name, isMaster: store.isMaster });
 
     const writeResult = await admin.from("app_settings").upsert({
       key: settingKey,
@@ -396,12 +514,69 @@ export const deleteBenefitEntry = createServerFn({ method: "POST" })
     await auditBenefit({
       userId: context.userId,
       action: "exclusao_beneficio_colaborador",
+      entityId: target.id,
       storeId: store.id,
       field: `${store.name} - Mês ${target.month} - ${target.collaborator}`,
-      oldValue: `Total: ${target.totalBeneficios}`,
-      newValue: "Excluído",
+      oldValue: JSON.stringify(target),
+      newValue: JSON.stringify(null),
       description: `Colaborador ${target.collaborator} removido do mês ${target.month} em ${store.name}`,
     });
+    return { ok: true };
+  });
+
+export const setBenefitZeroed = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({
+    id: z.string().min(1), year: z.number().int(), storeName: z.string().trim().min(1),
+    zeroed: z.boolean(), justification: z.string().trim().min(3),
+  }).parse(input))
+  .handler(async ({ data, context }) => {
+    const store = await resolveAuthorizedStore(context, data.storeName);
+    const { admin, settingKey, entries } = await loadStoreEntries(data.year, store.name);
+    const index = entries.findIndex((entry) => entry.id === data.id);
+    if (index < 0) throw new Error("Lançamento não encontrado.");
+    const previous = entries[index];
+    if (!previous) throw new Error("Lançamento não encontrado.");
+    await assertPeriodEditable({ year: data.year, month: previous.month, storeName: store.name, isMaster: store.isMaster });
+    const original = previous.originalCalculation ?? {
+      diasDevidos: previous.diasDevidos, totalVr: previous.totalVr, depositoDiario: previous.depositoDiario,
+      totalVt: previous.totalVt, totalBeneficios: previous.totalBeneficios,
+    };
+    const updated: BenefitEntry = data.zeroed
+      ? { ...previous, zeroed: true, zeroedReason: data.justification, zeroedAt: new Date().toISOString(), zeroedBy: context.userId, originalCalculation: original, totalVr: 0, depositoDiario: 0, totalVt: 0, totalBeneficios: 0 }
+      : { ...previous, zeroed: false, zeroedReason: data.justification, zeroedAt: undefined, zeroedBy: undefined, originalCalculation: undefined, ...original };
+    entries[index] = updated;
+    const write = await admin.from("app_settings").upsert({ key: settingKey, value: entries as any, description: `Benefícios ${store.name} - ${data.year}`, updated_by: context.userId, updated_at: new Date().toISOString() });
+    if (write.error) throw new Error("Não foi possível alterar o benefício.");
+    await auditBenefit({ userId: context.userId, action: data.zeroed ? "zeramento_beneficio" : "reativacao_beneficio", entityId: previous.id, storeId: store.id, field: `${store.name} - Mês ${previous.month} - ${previous.collaborator}`, oldValue: JSON.stringify(previous), newValue: JSON.stringify(updated), description: `${data.zeroed ? "Benefício zerado" : "Benefício reativado"}: ${data.justification}` });
+    return { ok: true, record: updated };
+  });
+
+export const undoLastBenefitChange = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => z.object({ year: z.number().int(), storeName: z.string().trim().min(1) }).parse(input))
+  .handler(async ({ data, context }) => {
+    const store = await resolveAuthorizedStore(context, data.storeName);
+    const { admin, settingKey, entries } = await loadStoreEntries(data.year, store.name);
+    const logsResult = await admin.from("audit_logs").select("id,action,entity_id,old_value,new_value,field").eq("entity", "benefits").eq("store_id", store.id).eq("user_id", context.userId).in("action", ["criacao_beneficio_colaborador", "edicao_beneficio_colaborador", "exclusao_beneficio_colaborador", "zeramento_beneficio", "reativacao_beneficio", "desfazer_beneficio"]).order("created_at", { ascending: false }).limit(40);
+    if (logsResult.error) throw new Error("Não foi possível consultar a última alteração.");
+    const undone = new Set((logsResult.data ?? []).filter((row) => row.action === "desfazer_beneficio").map((row) => row.field));
+    const target = (logsResult.data ?? []).find((row) => row.action !== "desfazer_beneficio" && !undone.has(row.id));
+    if (!target?.entity_id || target.old_value == null) throw new Error("Não há alteração disponível para desfazer.");
+    let oldRecord: BenefitEntry | null;
+    try { oldRecord = JSON.parse(target.old_value) as BenefitEntry | null; } catch { throw new Error("A última alteração não possui estado restaurável."); }
+    const currentIndex = entries.findIndex((entry) => entry.id === target.entity_id);
+    const currentRecord = currentIndex >= 0 ? entries[currentIndex] : null;
+    const month = oldRecord?.month ?? currentRecord?.month;
+    if (!month) throw new Error("Não foi possível identificar a competência da alteração.");
+    await assertPeriodEditable({ year: data.year, month, storeName: store.name, isMaster: store.isMaster });
+    if (oldRecord) {
+      if (currentIndex >= 0) entries[currentIndex] = oldRecord;
+      else entries.push(oldRecord);
+    } else if (currentIndex >= 0) entries.splice(currentIndex, 1);
+    const write = await admin.from("app_settings").upsert({ key: settingKey, value: entries as any, description: `Benefícios ${store.name} - ${data.year}`, updated_by: context.userId, updated_at: new Date().toISOString() });
+    if (write.error) throw new Error("Não foi possível desfazer a alteração.");
+    await auditBenefit({ userId: context.userId, action: "desfazer_beneficio", entityId: target.entity_id, storeId: store.id, field: target.id, oldValue: JSON.stringify(currentRecord), newValue: JSON.stringify(oldRecord), description: "Última alteração de benefício desfeita" });
     return { ok: true };
   });
 
@@ -470,6 +645,7 @@ export const toggleBenefitPeriodStatus = createServerFn({ method: "POST" })
   }).parse(input))
   .handler(async ({ data, context }) => {
     const store = await resolveAuthorizedStore(context, data.storeName);
+    if (!store.isMaster) throw new Error("Apenas o perfil Master pode fechar ou reabrir competências.");
     const admin = await getAdmin();
     const settingKey = `benefits_period_statuses_${data.year}`;
     const readResult = await admin.from("app_settings").select("value").eq("key", settingKey).maybeSingle();

@@ -22,22 +22,25 @@ export function createBenefitsWorkbook(records: BenefitExportRecord[]) {
     Ano: String(entry.year),
     Loja: entry.storeName,
     "Código da loja": entry.storeCode,
+    "Store ID": entry.storeId ?? "",
+    "Employee ID": entry.employeeId ?? "",
     Colaborador: entry.collaborator,
-    Cargo: "",
+    Cargo: entry.positionName ?? "",
     Período: `${String(entry.month).padStart(2, "0")}/${entry.year}`,
     "Dias trabalhados": entry.diasDevidos,
     Diárias: entry.diasDevidos,
     "Valor diário": entry.valorVr,
     "Total VR": entry.totalVr,
     "Total VT": entry.totalVt,
-    "Outros valores": Number(entry.aditivoVr || 0) + Number(entry.aditivoVt || 0),
+    Aditivos: (entry.adjustments ?? []).filter((adjustment) => adjustment.kind === "ADITIVO").reduce((sum, adjustment) => sum + adjustment.value, 0),
+    Descontos: (entry.adjustments ?? []).filter((adjustment) => adjustment.kind === "DESCONTO").reduce((sum, adjustment) => sum + adjustment.value, 0),
     "Total geral": entry.totalBeneficios,
     Status: entry.status,
     "Data de aprovação": "",
     "Aprovado por": "",
   }));
   const consolidatedSheet = XLSX.utils.json_to_sheet(consolidated);
-  setWidths(consolidatedSheet, [14, 8, 24, 16, 28, 18, 12, 18, 12, 15, 15, 15, 18, 16, 14, 20, 20]);
+  setWidths(consolidatedSheet, [14, 8, 24, 16, 36, 36, 28, 18, 12, 18, 12, 15, 15, 15, 15, 16, 14, 20, 20]);
   XLSX.utils.book_append_sheet(workbook, consolidatedSheet, "Consolidado");
 
   const grouped = new Map<string, BenefitExportRecord[]>();
@@ -67,28 +70,12 @@ export function createBenefitsWorkbook(records: BenefitExportRecord[]) {
   setWidths(summarySheet, [32, 20]);
   XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumo Financeiro");
 
-  const details = records.map((entry) => ({
-    Loja: entry.storeName,
-    Código: entry.storeCode,
-    Colaborador: entry.collaborator,
-    Competência: `${String(entry.month).padStart(2, "0")}/${entry.year}`,
-    "Dias do mês": entry.diasMes,
-    Folgas: entry.folgas,
-    "Dias devidos": entry.diasDevidos,
-    "VR diário": entry.valorVr,
-    "Total VR": entry.totalVr,
-    "VT diarista": entry.vtDiarista,
-    "VT mensalista": entry.vtMensalista,
-    "Depósito diário": entry.depositoDiario,
-    "Total VT": entry.totalVt,
-    "Aditivo VR": entry.aditivoVr,
-    "Aditivo VT": entry.aditivoVt,
-    "Total geral": entry.totalBeneficios,
-    Status: entry.status,
-    Observação: entry.obs,
-  }));
+  const details = records.flatMap((entry) => [
+    ...(entry.occurrences ?? []).map((occurrence) => ({ Loja: entry.storeName, "Employee ID": entry.employeeId ?? "", Colaborador: entry.collaborator, Cargo: entry.positionName ?? "", Competência: `${String(entry.month).padStart(2, "0")}/${entry.year}`, Tipo: `Ocorrência: ${occurrence.type}`, Valor: "", Dias: occurrence.days, "Abate dias": occurrence.deductFromDueDays ? "Sim" : "Não", Descrição: occurrence.note })),
+    ...(entry.adjustments ?? []).map((adjustment) => ({ Loja: entry.storeName, "Employee ID": entry.employeeId ?? "", Colaborador: entry.collaborator, Cargo: entry.positionName ?? "", Competência: `${String(entry.month).padStart(2, "0")}/${entry.year}`, Tipo: `${adjustment.kind} ${adjustment.category}`, Valor: adjustment.kind === "DESCONTO" ? -adjustment.value : adjustment.value, Dias: "", "Abate dias": "", Descrição: adjustment.description })),
+  ]);
   const detailSheet = XLSX.utils.json_to_sheet(details);
-  setWidths(detailSheet, [24, 14, 28, 14, 14, 10, 14, 14, 14, 14, 16, 18, 14, 14, 14, 16, 14, 30]);
-  XLSX.utils.book_append_sheet(workbook, detailSheet, "Detalhamento");
+  setWidths(detailSheet, [24, 36, 28, 18, 14, 20, 14, 10, 12, 36]);
+  XLSX.utils.book_append_sheet(workbook, detailSheet, "Ocorrências & Ajustes");
   return workbook;
 }

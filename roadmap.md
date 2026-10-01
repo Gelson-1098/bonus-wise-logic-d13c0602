@@ -39,3 +39,11 @@
 - [x] Atualizar criação, reset, cópia e WhatsApp na Central de Usuários
 - [x] Implementar exportação Excel em quatro abas com filtros e autorização
 - [x] Validar acesso, reset, permissões, arquivo e compilação
+
+## Evolução incremental de Benefícios
+- [x] Auditar persistência, funcionários, permissões e histórico existentes
+- [x] Tornar calendário automático e integrar funcionários oficiais por employee_id
+- [x] Implementar ocorrências, modalidades de transporte e ajustes com memória histórica
+- [x] Implementar zeramento, reativação e desfazer persistente com auditoria
+- [x] Aperfeiçoar consolidado, Excel e WhatsApp multiloja
+- [x] Validar cálculos, persistência, duplicidade, fechamento e permissões
