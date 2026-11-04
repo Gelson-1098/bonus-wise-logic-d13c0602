@@ -61,7 +61,7 @@ function DashboardPage() {
     },
   });
 
-  const universes = visibleUniverses(isMaster).filter((u) => u.id !== "dashboard");
+  const universes = visibleUniverses(isMaster, access?.role === "gerente").filter((u) => u.id !== "dashboard");
 
   return (
     <AppShell
