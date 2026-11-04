@@ -456,12 +456,28 @@ function EmployeesTab({ editable }: { editable: boolean }) {
                 <TableHead className="text-right">Valor base</TableHead>
                 <TableHead className="w-[90px]">Ativo</TableHead>
                 <TableHead className="w-[110px]">Elegível</TableHead>
+                {editable && <TableHead className="w-[90px] text-right">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {(employees.data ?? []).map((e) => (
                 <TableRow key={e.id}>
-                  <TableCell className="font-medium">{e.full_name}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-1.5">
+                      <span>{e.full_name}</span>
+                      {editable && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          title="Editar nome"
+                          onClick={() => setEditing({ id: e.id, full_name: e.full_name })}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{(e.stores as { name: string } | null)?.name ?? "—"}</TableCell>
                   <TableCell>
                     <Select
