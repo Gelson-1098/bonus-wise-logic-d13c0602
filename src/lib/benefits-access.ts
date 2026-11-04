@@ -24,6 +24,15 @@ export function canManageBenefitPeriod(statuses: Record<string, string>, storeNa
   return !benefitPeriodClosed(statuses, storeName, month);
 }
 
+export function assertBenefitEditScope(entries: Pick<BenefitEntry, "id" | "year" | "month">[], input: { id?: string; year: number; month: number }) {
+  if (!input.id) return;
+  const existing = entries.find((entry) => entry.id === input.id);
+  if (!existing) throw new Error("Lançamento não encontrado. Atualize a tela antes de editar.");
+  if (existing.year !== input.year || existing.month !== input.month) {
+    throw new Error("A edição deve permanecer na competência original do lançamento.");
+  }
+}
+
 export function storeBenefitEntries(storeValue: unknown, legacyValue: unknown, year: number, storeName: string): BenefitEntry[] {
   const source = Array.isArray(storeValue) ? storeValue : Array.isArray(legacyValue) ? legacyValue : [];
   return source.filter((entry: BenefitEntry) => entry.year === year && belongsToBenefitStore(entry.storeName, storeName));
