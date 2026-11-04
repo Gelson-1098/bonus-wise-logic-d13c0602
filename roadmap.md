@@ -1,5 +1,11 @@
 # Roadmap
 
+## Revisão de estabilidade para uso
+- [ ] Revisar erros, acesso, Benefícios e impedimentos reais
+- [ ] Corrigir somente problemas confirmados preservando dados operacionais
+- [ ] Executar testes existentes e verificar navegação autenticada e persistência
+- [ ] Conferir compilação e registrar limitações da validação
+
 ## Permissões de Benefícios Mensais
 - [x] Corrigir leitura/gravação de registros legados e validar autorização por loja
 - [x] Unificar bloqueio somente em competências formalmente fechadas
