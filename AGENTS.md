@@ -15,4 +15,4 @@
 - A evolução de Benefícios mantém cada competência no armazenamento existente, vinculada por `employee_id`, com ocorrências, ajustes e memória de cálculo no próprio registro para preservar históricos sem duplicar o cadastro mestre.
 - Benefits mutations use authorized server functions and preserve store-filtered legacy entries before writing per-store settings; shared JSON keys remain protected by Master-only RLS to prevent cross-store disclosure.
 - Benefit store comparisons use the shared official identity resolver, and edits must retain their existing entry and competence, to prevent alias mismatches and stale edits creating rows.
-- Master-data employee updates require Master at the database boundary, matching the administrative page guard and preventing direct API role changes by store users.
+- Employee updates are store-scoped at the database boundary (can_access_store): managers add, rename and deactivate employees only in their authorized stores; hard DELETE stays Master-only to preserve history.
