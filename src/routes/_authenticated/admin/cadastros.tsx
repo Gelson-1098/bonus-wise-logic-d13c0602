@@ -343,6 +343,8 @@ function EmployeesTab({ editable }: { editable: boolean }) {
   const [storeFilter, setStoreFilter] = useState("todas");
   const [openNew, setOpenNew] = useState(false);
   const [openImport, setOpenImport] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; full_name: string } | null>(null);
+  const [deactivating, setDeactivating] = useState<{ id: string; full_name: string } | null>(null);
   const [form, setForm] = useState({ full_name: "", store_id: "", position_id: "", registration: "", cpf: "" });
 
   const stores = useQuery({
@@ -380,12 +382,16 @@ function EmployeesTab({ editable }: { editable: boolean }) {
   const update = useMutation({
     mutationFn: async (v: {
       id: string;
-      patch: { active?: boolean; bonus_eligible?: boolean; position_id?: string; store_id?: string };
+      patch: { full_name?: string; active?: boolean; bonus_eligible?: boolean; position_id?: string; store_id?: string };
     }) => {
       const { error } = await supabase.from("employees").update(v.patch).eq("id", v.id);
       if (error) throw new Error(error.message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["employees"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["employees"] });
+      setEditing(null);
+      setDeactivating(null);
+    },
     onError: (e: Error) => toast.error("Erro", { description: e.message }),
   });
 
