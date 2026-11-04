@@ -538,6 +538,54 @@ function EmployeesTab({ editable }: { editable: boolean }) {
         </div>
       </CardContent>
 
+      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar nome do colaborador</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-ename">Nome completo</Label>
+              <Input
+                id="edit-ename"
+                value={editing?.full_name ?? ""}
+                onChange={(e) => setEditing((cur) => (cur ? { ...cur, full_name: e.target.value } : cur))}
+              />
+            </div>
+            <Button
+              className="w-full"
+              disabled={!editing?.full_name.trim() || update.isPending}
+              onClick={() =>
+                editing && update.mutate({ id: editing.id, patch: { full_name: editing.full_name.trim() } })
+              }
+            >
+              Salvar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deactivating} onOpenChange={(open) => !open && setDeactivating(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir colaborador</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deactivating?.full_name} será desativado e deixará de aparecer nas novas seleções. O histórico de
+              benefícios, metas e lançamentos anteriores será preservado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={update.isPending}
+              onClick={() => deactivating && update.mutate({ id: deactivating.id, patch: { active: false } })}
+            >
+              Confirmar exclusão
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={openNew} onOpenChange={setOpenNew}>
         <DialogContent>
           <DialogHeader>
