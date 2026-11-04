@@ -17,7 +17,7 @@ export function paymentAmounts(entry: PaymentEntry) {
   if (entry.result_status === "sem_gatilho") {
     return { presentism: 200, goal: 0, total: 200 };
   }
-  if (entry.approved_value == null && entry.calculated_value == null) return null;
+  if (entry.result_status !== "aprovado" || (entry.approved_value == null && entry.calculated_value == null)) return null;
   const goal = Number(entry.approved_value ?? entry.calculated_value);
   if (!Number.isFinite(goal)) throw new Error("Há um valor de bonificação inválido na listagem.");
   const roundedGoal = Math.round(goal * 100) / 100;

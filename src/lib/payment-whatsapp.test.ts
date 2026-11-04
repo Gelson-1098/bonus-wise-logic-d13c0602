@@ -9,6 +9,7 @@ test("pending collaborators never enter payment totals even with stored values",
 });
 test("absence of completed calculation is pending rather than a R$ 200 payment", () => {
   assert.equal(paymentAmounts({ ...entry, calculated_value: null }), null);
+  assert.equal(paymentAmounts({ ...entry, result_status: null, calculated_value: 0 }), null);
 });
 test("eliminated collaborators receive zero", () => {
   assert.deepEqual(paymentAmounts({ ...entry, result_status: "eliminado" }), { presentism: 0, goal: 0, total: 0 });
