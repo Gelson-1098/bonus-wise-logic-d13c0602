@@ -1,5 +1,9 @@
 # Roadmap
 
+## Cópia da relação de pagamento mensal
+- [x] Adicionar botão e mensagem usando somente dados carregados, sem alterar bonificações
+- [ ] Validar classificação, totais e cópia na tela autenticada
+
 ## Revisão de estabilidade para uso
 - [x] Revisar erros, acesso, Benefícios e impedimentos reais
 - [x] Corrigir identidade de loja, edição fora do período, valores zero e erros administrativos; reforçar cadastro mestre
