@@ -1,0 +1,1 @@
+ALTER POLICY "employees update" ON public.employees TO authenticated USING (public.is_master()) WITH CHECK (public.is_master());

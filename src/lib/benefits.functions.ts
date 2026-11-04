@@ -9,7 +9,7 @@ import {
   type BenefitParameter,
 } from "@/lib/benefits-types";
 import { findDbStore, resolveStore } from "@/lib/store-registry";
-import { benefitPeriodClosed, belongsToBenefitStore, storeBenefitEntries } from "@/lib/benefits-access";
+import { assertBenefitEditScope, benefitPeriodClosed, belongsToBenefitStore, storeBenefitEntries } from "@/lib/benefits-access";
 
 type AuthenticatedContext = {
   supabase: any;
@@ -341,8 +341,7 @@ export const getBenefitExportData = createServerFn({ method: "POST" })
         const serial = entry.year * 12 + entry.month;
         if (serial < start || serial > end) continue;
         if (requestedStores.size && !requestedStores.has(normalizeName(entry.storeName))) continue;
-        const rawStatus = statuses[`${entry.storeName}-${entry.month}`] ?? "estimado";
-        const status = rawStatus === "fechado" ? "Aprovado" : "Pendente";
+        const status = benefitPeriodClosed(statuses, entry.storeName, entry.month) ? "Aprovado" : "Pendente";
         if (data.status === "aprovados" && status !== "Aprovado") continue;
         if (data.status === "pendentes" && status !== "Pendente") continue;
         if (data.status === "reprovados") continue;
@@ -396,7 +395,7 @@ export const getBenefitEntries = createServerFn({ method: "GET" })
       if (entry.year !== data.year || !registeredStore || !authorizedStoreIds.has(registeredStore.id)) return false;
       if (data.month && entry.month !== data.month) return false;
       if (data.storeName && data.storeName !== "TODAS") {
-        return normalizeName(entry.storeName) === normalizeName(data.storeName);
+        return belongsToBenefitStore(entry.storeName, data.storeName);
       }
       return true;
     });
@@ -410,6 +409,7 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
     const store = await resolveAuthorizedStore(context, data.storeName);
     await assertPeriodEditable({ year: data.year, month: data.month, storeName: store.name, isMaster: store.isMaster });
     const { admin, settingKey, entries } = await loadStoreEntries(data.year, store.name);
+    assertBenefitEditScope(entries, data);
     let employeeQuery = admin.from("employees").select("id,full_name,position_id,positions(name)").eq("active", true);
     if (!store.isMaster) employeeQuery = employeeQuery.eq("store_id", store.id);
     const employeeResult = data.employeeId

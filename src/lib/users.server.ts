@@ -123,6 +123,11 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
     supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
   ]);
 
+  if (profiles.error) throw new Error("Não foi possível carregar os perfis de usuários.");
+  if (roles.error) throw new Error("Não foi possível carregar os papéis dos usuários.");
+  if (stores.error) throw new Error("Não foi possível carregar os vínculos de loja.");
+  if (authList.error) throw new Error("Não foi possível consultar as contas de acesso.");
+
   const roleBy = new Map<string, AppRoleValue>();
   for (const r of roles.data ?? []) roleBy.set(r.user_id, r.role as AppRoleValue);
 
@@ -149,22 +154,25 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
 }
 
 async function countActiveMasters(exceptUserId?: string) {
-  const { data: roles } = await supabaseAdmin.from("user_roles").select("user_id").eq("role", "master");
+  const { data: roles, error: rolesError } = await supabaseAdmin.from("user_roles").select("user_id").eq("role", "master");
+  if (rolesError) throw new Error("Não foi possível verificar os Masters ativos.");
   const ids = (roles ?? []).map((r) => r.user_id).filter((id) => id !== exceptUserId);
   if (!ids.length) return 0;
-  const { data: profiles } = await supabaseAdmin
+  const { data: profiles, error: profilesError } = await supabaseAdmin
     .from("profiles")
     .select("id,active")
     .in("id", ids);
+  if (profilesError) throw new Error("Não foi possível verificar os perfis dos Masters.");
   return (profiles ?? []).filter((p) => (p as { active?: boolean }).active !== false).length;
 }
 
 export async function assertNotLastMaster(userId: string) {
-  const { data: role } = await supabaseAdmin
+  const { data: role, error } = await supabaseAdmin
     .from("user_roles")
     .select("role")
     .eq("user_id", userId)
     .maybeSingle();
+  if (error) throw new Error("Não foi possível validar a proteção do último Master.");
   if (role?.role !== "master") return;
   const remaining = await countActiveMasters(userId);
   if (remaining < 1) {
@@ -382,12 +390,18 @@ export async function startManagedUserPasswordReset(userId: string, actor: Actor
 }
 
 export async function diagnoseManagedUser(userId: string) {
-  const [{ data: profile }, { data: roles }, { data: stores }, authResult] = await Promise.all([
+  const [profileResult, rolesResult, storesResult, authResult] = await Promise.all([
     supabaseAdmin.from("profiles").select("id,email,active,must_change_password").eq("id", userId).maybeSingle(),
     supabaseAdmin.from("user_roles").select("role").eq("user_id", userId),
     supabaseAdmin.from("user_stores").select("store_id,stores(name,active)").eq("user_id", userId),
     supabaseAdmin.auth.admin.getUserById(userId),
   ]);
+  if (profileResult.error || rolesResult.error || storesResult.error || authResult.error) {
+    throw new Error("Não foi possível concluir o diagnóstico do acesso. Tente novamente.");
+  }
+  const profile = profileResult.data;
+  const roles = rolesResult.data;
+  const stores = storesResult.data;
   const authUser = authResult.data.user;
   const role = roles?.[0]?.role ?? null;
   const issues: string[] = [];

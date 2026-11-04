@@ -57,7 +57,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { brl, MONTHS } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { benefitPeriodClosed } from "@/lib/benefits-access";
+import { benefitPeriodClosed, belongsToBenefitStore } from "@/lib/benefits-access";
 import {
   type BenefitEntry,
   type BenefitAdjustment,
@@ -220,7 +220,7 @@ function consolidatedWhatsAppText(input: {
   ].join("\n");
 }
 
-export function BeneficiosPage() {
+function BeneficiosPage() {
   const qc = useQueryClient();
   const { data: access } = useAccess();
   const isMaster = access?.isMaster ?? false;
@@ -269,12 +269,6 @@ export function BeneficiosPage() {
     queryFn: () => fetchStatuses({ data: { year } }),
   });
 
-  const employeesQuery = useQuery({
-    queryKey: ["benefit-employees", year, month, selectedStore],
-    enabled: !!selectedStore,
-    queryFn: () => fetchEmployees({ data: { year, month, storeName: selectedStore, search: "" } }),
-  });
-
   const rawEntries = entriesQuery.data ?? [];
   const parameters = paramsQuery.data ?? [];
   const periodStatuses = statusesQuery.data ?? {};
@@ -304,14 +298,14 @@ export function BeneficiosPage() {
     if (isMaster) return all;
     const mine = myStoresQuery.data ?? [];
     if (!mine.length) return [];
-    return all.filter((name) =>
-      mine.some((m) => {
-        const a = normalizeName(m);
-        const b = normalizeName(name);
-        return a.includes(b) || b.includes(a);
-      }),
-    );
+    return all.filter((name) => mine.some((m) => belongsToBenefitStore(m, name)));
   }, [isMaster, myStoresQuery.data]);
+
+  const employeesQuery = useQuery({
+    queryKey: ["benefit-employees", year, month, selectedStore],
+    enabled: !!access && availableStores.includes(selectedStore),
+    queryFn: () => fetchEmployees({ data: { year, month, storeName: selectedStore, search: "" } }),
+  });
 
   const visibleStores = useMemo(
     () => ALL_SYSTEM_STORES.filter((s) => availableStores.includes(s.name)),
@@ -327,14 +321,14 @@ export function BeneficiosPage() {
   const allEntries = useMemo(() => {
     if (isMaster) return rawEntries;
     return rawEntries.filter((e) =>
-      availableStores.some((n) => normalizeName(n) === normalizeName(e.storeName)),
+      availableStores.some((n) => belongsToBenefitStore(n, e.storeName)),
     );
   }, [rawEntries, isMaster, availableStores]);
 
   // Entries filtered for current view
   const currentMonthEntries = useMemo(() => {
     return allEntries.filter(
-      (e) => e.month === month && e.storeName.toLowerCase() === selectedStore.toLowerCase()
+      (e) => e.month === month && belongsToBenefitStore(e.storeName, selectedStore)
     );
   }, [allEntries, month, selectedStore]);
 
@@ -412,7 +406,7 @@ export function BeneficiosPage() {
     if (consolidatedStores.length && !consolidatedStores.includes(entry.storeName)) return false;
     if (consolidatedPosition !== "TODOS" && entry.positionName !== consolidatedPosition) return false;
     if (consolidatedSearch && !normalizeName(`${entry.collaborator} ${entry.employeeId ?? ""}`).includes(normalizeName(consolidatedSearch))) return false;
-    const status = periodStatuses[`${entry.storeName}-${entry.month}`] === "fechado" ? "fechado" : "estimado";
+    const status = benefitPeriodClosed(periodStatuses, entry.storeName, entry.month) ? "fechado" : "estimado";
     return consolidatedStatus === "todos" || status === consolidatedStatus;
   }), [allEntries, month, consolidatedStores, consolidatedPosition, consolidatedSearch, consolidatedStatus, periodStatuses]);
 
@@ -1381,8 +1375,8 @@ function CollaboratorEditDialog({
   const selectedEmployee = employees.find((employee) => employee.id === employeeId);
   const collaborator = selectedEmployee?.fullName ?? entry.collaborator;
   const diasMes = calendarDays(entry.year, entry.month);
-  const [folgas, setFolgas] = useState(String(entry.folgas || 5));
-  const [valorVr, setValorVr] = useState(String(entry.valorVr || 39.13));
+  const [folgas, setFolgas] = useState(String(entry.folgas ?? 5));
+  const [valorVr, setValorVr] = useState(String(entry.valorVr ?? 39.13));
   const [vtDiarista, setVtDiarista] = useState(String(entry.vtDiarista || 0));
   const [vtMensalista, setVtMensalista] = useState(String(entry.vtMensalista || 0));
   const [aditivoVt, setAditivoVt] = useState(String(entry.aditivoVt || 0));

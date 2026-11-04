@@ -54,8 +54,11 @@ export function useAccess() {
         supabase.from("user_stores").select("store_id").eq("user_id", userId),
         supabase.from("profiles").select("full_name,email,active,must_change_password").eq("id", userId).maybeSingle(),
       ]);
+      if (roles.error || stores.error || profile.error) {
+        throw new Error("Não foi possível validar seu acesso. Atualize a página para tentar novamente.");
+      }
       const role = ((roles.data ?? [])[0]?.role ?? null) as AppRoleValue | null;
-      const active = (profile.data as { active?: boolean } | null)?.active ?? true;
+      const active = profile.data?.active === true;
       return {
         userId,
         email: profile.data?.email ?? session?.user.email ?? null,

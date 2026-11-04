@@ -14,3 +14,5 @@
 - A exportação financeira de benefícios lê os valores persistidos por funções autenticadas e gera quatro abas no navegador, para preservar o escopo de lojas do usuário sem duplicar dados.
 - A evolução de Benefícios mantém cada competência no armazenamento existente, vinculada por `employee_id`, com ocorrências, ajustes e memória de cálculo no próprio registro para preservar históricos sem duplicar o cadastro mestre.
 - Benefits mutations use authorized server functions and preserve store-filtered legacy entries before writing per-store settings; shared JSON keys remain protected by Master-only RLS to prevent cross-store disclosure.
+- Benefit store comparisons use the shared official identity resolver, and edits must retain their existing entry and competence, to prevent alias mismatches and stale edits creating rows.
+- Master-data employee updates require Master at the database boundary, matching the administrative page guard and preventing direct API role changes by store users.
