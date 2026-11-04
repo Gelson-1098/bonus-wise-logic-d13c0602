@@ -354,6 +354,26 @@ function EmployeesTab({ editable }: { editable: boolean }) {
       return data ?? [];
     },
   });
+  const { data: access } = useAccess();
+  const isMaster = access?.isMaster ?? false;
+  const myStores = useQuery({
+    queryKey: ["my-stores"],
+    enabled: !isMaster,
+    queryFn: async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return [] as string[];
+      const { data } = await supabase.from("user_stores").select("store_id").eq("user_id", user.id);
+      return (data ?? []).map((r) => r.store_id as string);
+    },
+  });
+  const visibleStores = useMemo(() => {
+    const all = stores.data ?? [];
+    if (isMaster) return all;
+    const allowed = new Set(myStores.data ?? []);
+    return all.filter((s) => allowed.has(s.id));
+  }, [stores.data, isMaster, myStores.data]);
   const loadPositions = useServerFn(listPositionsBasic);
   const positions = useQuery({
     queryKey: ["positions"],
