@@ -446,7 +446,7 @@ function EmployeesTab({ editable }: { editable: boolean }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas as lojas</SelectItem>
-              {(stores.data ?? []).map((s) => (
+              {(visibleStores).map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name}
                 </SelectItem>
@@ -627,7 +627,7 @@ function EmployeesTab({ editable }: { editable: boolean }) {
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(stores.data ?? []).map((s) => (
+                  {(visibleStores).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
                     </SelectItem>
@@ -677,7 +677,7 @@ function EmployeesTab({ editable }: { editable: boolean }) {
       <EmployeeImportDialog
         open={openImport}
         onOpenChange={setOpenImport}
-        stores={stores.data ?? []}
+        stores={visibleStores}
         positions={positions.data ?? []}
         existing={employees.data ?? []}
         onSaved={() => qc.invalidateQueries({ queryKey: ["employees"] })}
