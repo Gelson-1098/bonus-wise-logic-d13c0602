@@ -1,15 +1,15 @@
 # Roadmap
 
 ## Revisão de estabilidade para uso
-- [ ] Revisar erros, acesso, Benefícios e impedimentos reais
-- [ ] Corrigir somente problemas confirmados preservando dados operacionais
-- [ ] Executar testes existentes e verificar navegação autenticada e persistência
-- [ ] Conferir compilação e registrar limitações da validação
+- [x] Revisar erros, acesso, Benefícios e impedimentos reais
+- [x] Corrigir identidade de loja, edição fora do período, valores zero e erros administrativos; reforçar cadastro mestre
+- [x] Executar testes e verificar navegação Master e Gerente, salvar/editar/F5/excluir e fechamento; remover registros temporários
+- [x] Conferir compilação e revisar alertas aprofundados; auditoria não equivale a garantia de ausência de todos os problemas
 
 ## Permissões de Benefícios Mensais
 - [x] Corrigir leitura/gravação de registros legados e validar autorização por loja
 - [x] Unificar bloqueio somente em competências formalmente fechadas
-- [x] Testar persistência e exclusão com sessão Master e regras de isolamento em testes; teste de gerente bloqueado pela entrada do usuário temporário, removido ao final
+- [x] Testar persistência e exclusão com Master e Gerente, primeiro acesso, troca de senha, lojas autorizadas e meses fechados; usuários e lançamentos de teste removidos
 
 - [x] Auditar tela, resolução, banco e dados atuais
 - [x] Adicionar escopo mensal mínimo e resolução determinística
