@@ -24,7 +24,7 @@ export function canManageBenefitPeriod(statuses: Record<string, string>, storeNa
   return !benefitPeriodClosed(statuses, storeName, month);
 }
 
-export function assertBenefitEditScope(entries: Pick<BenefitEntry, "id" | "year" | "month">[], input: { id?: string; year: number; month: number }) {
+export function assertBenefitEditScope(entries: Pick<BenefitEntry, "id" | "year" | "month">[], input: { id?: string | undefined; year: number; month: number }) {
   if (!input.id) return;
   const existing = entries.find((entry) => entry.id === input.id);
   if (!existing) throw new Error("Lançamento não encontrado. Atualize a tela antes de editar.");

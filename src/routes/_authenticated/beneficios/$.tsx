@@ -269,12 +269,6 @@ function BeneficiosPage() {
     queryFn: () => fetchStatuses({ data: { year } }),
   });
 
-  const employeesQuery = useQuery({
-    queryKey: ["benefit-employees", year, month, selectedStore],
-    enabled: !!access && (isMaster || myStoresAuthorized(selectedStore)),
-    queryFn: () => fetchEmployees({ data: { year, month, storeName: selectedStore, search: "" } }),
-  });
-
   const rawEntries = entriesQuery.data ?? [];
   const parameters = paramsQuery.data ?? [];
   const periodStatuses = statusesQuery.data ?? {};
@@ -307,9 +301,11 @@ function BeneficiosPage() {
     return all.filter((name) => mine.some((m) => belongsToBenefitStore(m, name)));
   }, [isMaster, myStoresQuery.data]);
 
-  function myStoresAuthorized(storeName: string) {
-    return (myStoresQuery.data ?? []).some((name) => belongsToBenefitStore(name, storeName));
-  }
+  const employeesQuery = useQuery({
+    queryKey: ["benefit-employees", year, month, selectedStore],
+    enabled: !!access && availableStores.includes(selectedStore),
+    queryFn: () => fetchEmployees({ data: { year, month, storeName: selectedStore, search: "" } }),
+  });
 
   const visibleStores = useMemo(
     () => ALL_SYSTEM_STORES.filter((s) => availableStores.includes(s.name)),
