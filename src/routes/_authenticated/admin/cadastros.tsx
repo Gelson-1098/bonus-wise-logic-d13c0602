@@ -23,7 +23,14 @@ import { EmployeeImportDialog } from "@/components/employee-import-dialog";
 export const Route = createFileRoute("/_authenticated/admin/cadastros")({
   beforeLoad: async () => {
     const { data, error } = await supabase.rpc("is_master");
-    if (error || data !== true) throw redirect({ to: "/remuneracao/mensal/painel" });
+    if (!error && data === true) return;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw redirect({ to: "/remuneracao/mensal/painel" });
+    const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+    const isGerente = (roles ?? []).some((r) => r.role === "gerente");
+    if (!isGerente) throw redirect({ to: "/remuneracao/mensal/painel" });
   },
   head: () => ({
     meta: [
@@ -44,10 +51,11 @@ export const Route = createFileRoute("/_authenticated/admin/cadastros")({
 function CadastrosPage() {
   const { data: access } = useAccess();
   const isMaster = access?.isMaster ?? false;
+  const canEditEmployees = isMaster || access?.role === "gerente";
 
   return (
     <AppShell title="Cadastros" description="Lojas, cargos e colaboradores">
-      <Tabs defaultValue="lojas">
+      <Tabs defaultValue={isMaster ? "lojas" : "colaboradores"}>
         <TabsList>
           <TabsTrigger value="lojas">Lojas</TabsTrigger>
           <TabsTrigger value="cargos">Cargos</TabsTrigger>
@@ -60,7 +68,7 @@ function CadastrosPage() {
           <PositionsTab editable={isMaster} />
         </TabsContent>
         <TabsContent value="colaboradores" className="mt-4">
-          <EmployeesTab editable={isMaster} />
+          <EmployeesTab editable={canEditEmployees} />
         </TabsContent>
       </Tabs>
     </AppShell>
