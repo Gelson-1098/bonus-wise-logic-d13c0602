@@ -3,7 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { AlertTriangle, Calculator, CheckCircle2, Plus, Search, Send, XCircle } from "lucide-react";
+import { AlertTriangle, Calculator, CheckCircle2, MessageSquare, Plus, Search, Send, XCircle } from "lucide-react";
+import { buildPaymentWhatsApp } from "@/lib/payment-whatsapp";
 import { supabase } from "@/integrations/supabase/client";
 import {
   addEmployeeToPeriod,
@@ -74,6 +75,7 @@ function LancamentoPage() {
   const [storeId, setStoreId] = useState<string>("");
   const [openEntry, setOpenEntry] = useState<string | null>(null);
   const [addEmployeeOpen, setAddEmployeeOpen] = useState(false);
+  const [copyingPayment, setCopyingPayment] = useState(false);
 
   const open = useServerFn(openPeriod);
   const transition = useServerFn(transitionPeriod);
@@ -212,6 +214,32 @@ function LancamentoPage() {
     0,
   );
 
+  async function copyPayment() {
+    if (!entriesQuery.data?.length || entriesQuery.isFetching || positionsQuery.isFetching) return;
+    setCopyingPayment(true);
+    try {
+      const { message } = buildPaymentWhatsApp({
+        storeName: stores?.find((s) => s.id === storeId)?.name ?? "Loja",
+        month: period.month,
+        year: period.year,
+        generatedAt: new Date(),
+        entries: entriesQuery.data.map((e) => ({
+          ...e,
+          name: (e.employees as { full_name: string } | null)?.full_name ?? "—",
+          position: (e.position_id && positionMap.get(e.position_id)?.name) || "—",
+        })),
+      });
+      await navigator.clipboard.writeText(message);
+      toast.success("Relação de pagamento copiada!", { description: "Agora é só colar no WhatsApp." });
+    } catch (error) {
+      toast.error("Não foi possível copiar a relação de pagamento", {
+        description: error instanceof Error ? error.message : "Tente novamente.",
+      });
+    } finally {
+      setCopyingPayment(false);
+    }
+  }
+
   return (
     <AppShell
       title="Lançamento de resultados"
@@ -306,6 +334,15 @@ function LancamentoPage() {
             <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-base">Colaboradores</CardTitle>
               <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-auto min-h-8 whitespace-normal text-left font-medium"
+                  onClick={copyPayment}
+                  disabled={!entriesQuery.data?.length || entriesQuery.isFetching || positionsQuery.isFetching || copyingPayment}
+                >
+                  <MessageSquare className="size-4 shrink-0" /> WHATSAPP — COPIAR PAGAMENTO
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
