@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { z } from "zod";
 
 /**
  * Leitura CONSULTIVA do módulo Orçamento de Metas.
@@ -39,8 +40,16 @@ export type ConsultActual = {
 
 export const readMetasConsultivo = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: { year: number }) => ({ year: Number(data.year) }))
-  .handler(async ({ data }) => {
+  .inputValidator((data: { year: number }) => z.object({ year: z.number().int().min(2000).max(2100) }).parse(data))
+  .handler(async ({ data, context }) => {
+    const [profile, roles] = await Promise.all([
+      context.supabase.from("profiles").select("active").eq("id", context.userId).maybeSingle(),
+      context.supabase.from("user_roles").select("role").eq("user_id", context.userId),
+    ]);
+    if (profile.error || roles.error) throw new Error("Não foi possível validar o acesso ao orçamento.");
+    if (!profile.data?.active || !roles.data?.some((row) => ["master", "gerente", "treinador"].includes(row.role))) {
+      throw new Error("Seu perfil não possui acesso autorizado ao orçamento.");
+    }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const year = data.year;
 
@@ -62,6 +71,8 @@ export const readMetasConsultivo = createServerFn({ method: "GET" })
 
     if (storesRes.error) throw new Error(storesRes.error.message);
     if (goalsRes.error) throw new Error(goalsRes.error.message);
+    if (periodsRes.error) throw new Error(periodsRes.error.message);
+    if (histRes.error) throw new Error(histRes.error.message);
 
     const stores = (storesRes.data ?? []) as ConsultStore[];
     const storeNameById = new Map(stores.map((s) => [s.id, s.name]));
@@ -85,6 +96,7 @@ export const readMetasConsultivo = createServerFn({ method: "GET" })
           "period_id",
           periods.map((p) => p.id),
         );
+      if (targets.error) throw new Error(targets.error.message);
       for (const t of targets.data ?? []) {
         const p = periodById.get(t.period_id);
         if (!p) continue;
