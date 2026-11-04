@@ -1,5 +1,10 @@
 # Roadmap
 
+## Permissões de Benefícios Mensais
+- [x] Corrigir leitura/gravação de registros legados e validar autorização por loja
+- [x] Unificar bloqueio somente em competências formalmente fechadas
+- [x] Testar persistência e exclusão com sessão Master e regras de isolamento em testes; teste de gerente bloqueado pela entrada do usuário temporário, removido ao final
+
 - [x] Auditar tela, resolução, banco e dados atuais
 - [x] Adicionar escopo mensal mínimo e resolução determinística
 - [x] Implementar edição em rascunho e salvamento explícito seguro
