@@ -13,3 +13,4 @@
 - Senhas iniciais e resets usam credenciais temporárias individuais no esquema privado, acessíveis somente por funções administrativas e apagadas após a troca pessoal, para impedir compartilhamento e exposição permanente.
 - A exportação financeira de benefícios lê os valores persistidos por funções autenticadas e gera quatro abas no navegador, para preservar o escopo de lojas do usuário sem duplicar dados.
 - A evolução de Benefícios mantém cada competência no armazenamento existente, vinculada por `employee_id`, com ocorrências, ajustes e memória de cálculo no próprio registro para preservar históricos sem duplicar o cadastro mestre.
+- Benefits mutations use authorized server functions and preserve store-filtered legacy entries before writing per-store settings; shared JSON keys remain protected by Master-only RLS to prevent cross-store disclosure.

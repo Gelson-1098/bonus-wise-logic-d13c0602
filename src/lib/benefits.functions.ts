@@ -9,6 +9,7 @@ import {
   type BenefitParameter,
 } from "@/lib/benefits-types";
 import { findDbStore, resolveStore } from "@/lib/store-registry";
+import { benefitPeriodClosed, belongsToBenefitStore, storeBenefitEntries } from "@/lib/benefits-access";
 
 type AuthenticatedContext = {
   supabase: any;
@@ -203,24 +204,26 @@ function adjustmentTotal(adjustments: BenefitAdjustment[], category: "VR" | "VT"
 async function loadStoreEntries(year: number, storeName: string) {
   const admin = await getAdmin();
   const settingKey = storeSettingKey(year, storeName);
-  const result = await admin.from("app_settings").select("value").eq("key", settingKey).maybeSingle();
+  const legacyKey = `benefits_data_${year}`;
+  const result = await admin.from("app_settings").select("key,value").in("key", [settingKey, legacyKey]);
   if (result.error) throw new Error("Não foi possível carregar os lançamentos atuais da loja.");
+  const storeValue = result.data?.find((row) => row.key === settingKey)?.value;
+  const legacyValue = result.data?.find((row) => row.key === legacyKey)?.value;
   return {
     admin,
     settingKey,
-    entries: Array.isArray(result.data?.value) ? (result.data.value as unknown as BenefitEntry[]) : [],
+    entries: storeBenefitEntries(storeValue, legacyValue, year, storeName),
   };
 }
 
 async function assertPeriodEditable(input: { year: number; month: number; storeName: string; isMaster: boolean }) {
-  if (input.isMaster) return;
   const admin = await getAdmin();
   const result = await admin.from("app_settings").select("value").eq("key", `benefits_period_statuses_${input.year}`).maybeSingle();
   if (result.error) throw new Error("Não foi possível validar o fechamento da competência.");
   const statuses = result.data?.value && typeof result.data.value === "object" && !Array.isArray(result.data.value)
     ? result.data.value as Record<string, string>
     : {};
-  if (statuses[`${input.storeName}-${input.month}`] === "fechado") {
+  if (benefitPeriodClosed(statuses, input.storeName, input.month)) {
     throw new Error("Esta competência está fechada e não pode ser alterada.");
   }
 }
@@ -407,7 +410,8 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
     const store = await resolveAuthorizedStore(context, data.storeName);
     await assertPeriodEditable({ year: data.year, month: data.month, storeName: store.name, isMaster: store.isMaster });
     const { admin, settingKey, entries } = await loadStoreEntries(data.year, store.name);
-    const employeeQuery = admin.from("employees").select("id,full_name,position_id,positions(name)").eq("active", true);
+    let employeeQuery = admin.from("employees").select("id,full_name,position_id,positions(name)").eq("active", true);
+    if (!store.isMaster) employeeQuery = employeeQuery.eq("store_id", store.id);
     const employeeResult = data.employeeId
       ? await employeeQuery.eq("id", data.employeeId).maybeSingle()
       : await employeeQuery.eq("full_name", data.collaborator).limit(2);
@@ -416,7 +420,9 @@ export const saveBenefitEntry = createServerFn({ method: "POST" })
       ? employeeResult.data.length === 1 ? employeeResult.data[0] : null
       : employeeResult.data;
     if (!employee) throw new Error("Selecione um funcionário único do cadastro oficial.");
-    const duplicate = entries.find((entry) => entry.month === data.month && entry.employeeId === employee.id && entry.id !== data.id);
+    const duplicate = entries.find((entry) => entry.month === data.month
+      && (entry.employeeId === employee.id || (!entry.employeeId && normalizeName(entry.collaborator) === normalizeName(employee.full_name)))
+      && entry.id !== data.id);
     if (duplicate) throw new Error("Este funcionário já possui lançamento nesta loja e competência.");
     const now = new Date().toISOString();
     const occurrences: BenefitOccurrence[] = data.occurrences.map((occurrence) => ({
@@ -631,8 +637,10 @@ export const getBenefitPeriodStatuses = createServerFn({ method: "GET" })
       ? (result.data.value as Record<string, "estimado" | "fechado">)
       : {};
     if (authorized.isMaster) return statuses;
-    const names = authorized.stores.map((store) => `${store.name}-`);
-    return Object.fromEntries(Object.entries(statuses).filter(([key]) => names.some((name) => key.startsWith(name))));
+    return Object.fromEntries(Object.entries(statuses).filter(([key]) => {
+      const name = key.slice(0, key.lastIndexOf("-"));
+      return authorized.stores.some((store) => belongsToBenefitStore(name, store.name));
+    }));
   });
 
 export const toggleBenefitPeriodStatus = createServerFn({ method: "POST" })

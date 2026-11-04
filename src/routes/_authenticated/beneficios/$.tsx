@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { brl, MONTHS } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { benefitPeriodClosed } from "@/lib/benefits-access";
 import {
   type BenefitEntry,
   type BenefitAdjustment,
@@ -87,6 +88,10 @@ export const Route = createFileRoute("/_authenticated/beneficios/$")({
         name: "description",
         content: "Controle e apuração mensal de VR e VT por loja e colaborador com base nas regras regionais da PRISMA.",
       },
+      { property: "og:title", content: "Gestão Mensal de Benefícios | PRISMA" },
+      { property: "og:description", content: "Gestão mensal de benefícios por loja e colaborador no PRISMA." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: BeneficiosPage,
@@ -288,7 +293,8 @@ export function BeneficiosPage() {
     enabled: !!access && !isMaster,
     queryFn: async () => {
       if (!access?.storeIds?.length) return [] as string[];
-      const { data } = await supabase.from("stores").select("name").in("id", access.storeIds);
+      const { data, error } = await supabase.from("stores").select("name").in("id", access.storeIds);
+      if (error) throw new Error("Não foi possível carregar as lojas autorizadas.");
       return (data ?? []).map((s) => s.name as string);
     },
   });
@@ -314,7 +320,8 @@ export function BeneficiosPage() {
 
   useEffect(() => {
     if (!availableStores.length) return;
-    if (!availableStores.includes(selectedStore)) setSelectedStore(availableStores[0]!);
+    const firstStore = availableStores[0];
+    if (firstStore && !availableStores.includes(selectedStore)) setSelectedStore(firstStore);
   }, [availableStores, selectedStore]);
 
   const allEntries = useMemo(() => {
@@ -338,8 +345,7 @@ export function BeneficiosPage() {
   }, [currentMonthEntries, searchTerm]);
 
   // Current store period status
-  const currentPeriodKey = `${selectedStore}-${month}`;
-  const isPeriodClosed = periodStatuses[currentPeriodKey] === "fechado";
+  const isPeriodClosed = benefitPeriodClosed(periodStatuses, selectedStore, month);
 
   // Summary calculations
   const storeSummary = useMemo(() => {
@@ -739,7 +745,7 @@ export function BeneficiosPage() {
 
                   {/* Ações de Topo: Fechar/Reabrir Período & Adicionar Colaborador */}
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" size="sm" className="h-9 text-xs font-semibold" onClick={() => setConfirmUndo(true)} disabled={isPeriodClosed && !isMaster}>
+                    <Button variant="outline" size="sm" className="h-9 text-xs font-semibold" onClick={() => setConfirmUndo(true)} disabled={isPeriodClosed}>
                       <Undo2 className="size-3.5 mr-1.5" /> Desfazer última alteração
                     </Button>
                     <Button
@@ -774,7 +780,7 @@ export function BeneficiosPage() {
                     <Button
                       size="sm"
                       onClick={handleAddNewCollaborator}
-                      disabled={isPeriodClosed && !isMaster}
+                      disabled={isPeriodClosed}
                       className="h-9 text-xs font-bold"
                     >
                       <Plus className="size-3.5 mr-1" /> Adicionar Colaborador
@@ -1001,7 +1007,7 @@ export function BeneficiosPage() {
                                   size="sm"
                                   className="h-7 px-2 text-[10px] font-semibold"
                                   onClick={() => { setZeroReason(""); setZeroDialog({ entry, zeroed: !entry.zeroed }); }}
-                                  disabled={isPeriodClosed && !isMaster}
+                                  disabled={isPeriodClosed}
                                   title={entry.zeroed ? "Restaurar os valores originais" : "Zerar mantendo a memória de cálculo"}
                                 >
                                   {entry.zeroed ? "Reativar" : "Zerar"}
@@ -1014,16 +1020,18 @@ export function BeneficiosPage() {
                                     setIsNewEntry(false);
                                     setEditingEntry(entry);
                                   }}
-                                  disabled={isPeriodClosed && !isMaster}
+                                  disabled={isPeriodClosed}
+                                  aria-label={`Editar benefícios de ${entry.collaborator}`}
                                 >
                                   <Edit3 className="size-3.5" />
                                 </Button>
-                                {(isMaster || !isPeriodClosed) && (
+                                {!isPeriodClosed && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
                                     className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                                     onClick={() => setDeletingId(entry.id)}
+                                    aria-label={`Excluir benefícios de ${entry.collaborator}`}
                                   >
                                     <Trash2 className="size-3.5" />
                                   </Button>
@@ -1284,7 +1292,11 @@ export function BeneficiosPage() {
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => deletingId && deleteEntryMutation.mutate(deletingId)}
+                disabled={deleteEntryMutation.isPending}
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (deletingId) deleteEntryMutation.mutate(deletingId);
+                }}
               >
                 Confirmar Exclusão
               </AlertDialogAction>
