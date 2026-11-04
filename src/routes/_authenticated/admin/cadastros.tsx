@@ -516,6 +516,21 @@ function EmployeesTab({ editable }: { editable: boolean }) {
                       onCheckedChange={(v) => update.mutate({ id: e.id, patch: { bonus_eligible: v } })}
                     />
                   </TableCell>
+                  {editable && (
+                    <TableCell className="text-right">
+                      {e.active && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 text-destructive"
+                          title="Excluir (desativa preservando o histórico)"
+                          onClick={() => setDeactivating({ id: e.id, full_name: e.full_name })}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
