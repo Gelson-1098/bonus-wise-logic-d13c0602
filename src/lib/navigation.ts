@@ -17,6 +17,8 @@ export type NavLeaf = {
   label: string;
   /** visible only for administrators */
   master?: boolean | undefined;
+  /** visible only for store managers (master already has it under Administração) */
+  gerente?: boolean | undefined;
 };
 
 export type NavUniverse = {
@@ -102,6 +104,7 @@ export const UNIVERSES: NavUniverse[] = [
       { to: "/beneficios/funcionarios", label: "Funcionários" },
       { to: "/beneficios/movimentacoes", label: "Movimentações" },
       { to: "/beneficios/historico", label: "Histórico" },
+      { to: "/admin/cadastros", label: "Colaboradores da Loja", gerente: true },
     ],
   },
   {
@@ -205,10 +208,12 @@ export function buildCrumbs(pathname: string): Crumb[] {
   return crumbs;
 }
 
-export function visibleUniverses(isMaster: boolean): NavUniverse[] {
+export function visibleUniverses(isMaster: boolean, isGerente = false): NavUniverse[] {
   return UNIVERSES.filter((u) => !u.hidden && (!u.master || isMaster)).map((u) => ({
     ...u,
-    items: u.items?.filter((i) => !i.master || isMaster),
+    items: u.items?.filter(
+      (i) => (!i.master || isMaster) && (!i.gerente || (isGerente && !isMaster)),
+    ),
   }));
 }
 

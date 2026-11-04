@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { listPositionsBasic } from "@/lib/rules.functions";
 import { toast } from "sonner";
-import { Plus, Upload } from "lucide-react";
+import { Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/app-shell";
 import { useAccess } from "@/hooks/use-auth";
@@ -17,13 +17,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { brl } from "@/lib/format";
 import { EmployeeImportDialog } from "@/components/employee-import-dialog";
 
 export const Route = createFileRoute("/_authenticated/admin/cadastros")({
   beforeLoad: async () => {
     const { data, error } = await supabase.rpc("is_master");
-    if (error || data !== true) throw redirect({ to: "/remuneracao/mensal/painel" });
+    if (!error && data === true) return;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw redirect({ to: "/remuneracao/mensal/painel" });
+    const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+    const isGerente = (roles ?? []).some((r) => r.role === "gerente");
+    if (!isGerente) throw redirect({ to: "/remuneracao/mensal/painel" });
   },
   head: () => ({
     meta: [
@@ -44,10 +61,11 @@ export const Route = createFileRoute("/_authenticated/admin/cadastros")({
 function CadastrosPage() {
   const { data: access } = useAccess();
   const isMaster = access?.isMaster ?? false;
+  const canEditEmployees = isMaster || access?.role === "gerente";
 
   return (
     <AppShell title="Cadastros" description="Lojas, cargos e colaboradores">
-      <Tabs defaultValue="lojas">
+      <Tabs defaultValue={isMaster ? "lojas" : "colaboradores"}>
         <TabsList>
           <TabsTrigger value="lojas">Lojas</TabsTrigger>
           <TabsTrigger value="cargos">Cargos</TabsTrigger>
@@ -60,7 +78,7 @@ function CadastrosPage() {
           <PositionsTab editable={isMaster} />
         </TabsContent>
         <TabsContent value="colaboradores" className="mt-4">
-          <EmployeesTab editable={isMaster} />
+          <EmployeesTab editable={canEditEmployees} />
         </TabsContent>
       </Tabs>
     </AppShell>
@@ -325,6 +343,8 @@ function EmployeesTab({ editable }: { editable: boolean }) {
   const [storeFilter, setStoreFilter] = useState("todas");
   const [openNew, setOpenNew] = useState(false);
   const [openImport, setOpenImport] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; full_name: string } | null>(null);
+  const [deactivating, setDeactivating] = useState<{ id: string; full_name: string } | null>(null);
   const [form, setForm] = useState({ full_name: "", store_id: "", position_id: "", registration: "", cpf: "" });
 
   const stores = useQuery({
@@ -334,6 +354,26 @@ function EmployeesTab({ editable }: { editable: boolean }) {
       return data ?? [];
     },
   });
+  const { data: access } = useAccess();
+  const isMaster = access?.isMaster ?? false;
+  const myStores = useQuery({
+    queryKey: ["my-stores"],
+    enabled: !isMaster,
+    queryFn: async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return [] as string[];
+      const { data } = await supabase.from("user_stores").select("store_id").eq("user_id", user.id);
+      return (data ?? []).map((r) => r.store_id as string);
+    },
+  });
+  const visibleStores = useMemo(() => {
+    const all = stores.data ?? [];
+    if (isMaster) return all;
+    const allowed = new Set(myStores.data ?? []);
+    return all.filter((s) => allowed.has(s.id));
+  }, [stores.data, isMaster, myStores.data]);
   const loadPositions = useServerFn(listPositionsBasic);
   const positions = useQuery({
     queryKey: ["positions"],
@@ -362,12 +402,16 @@ function EmployeesTab({ editable }: { editable: boolean }) {
   const update = useMutation({
     mutationFn: async (v: {
       id: string;
-      patch: { active?: boolean; bonus_eligible?: boolean; position_id?: string; store_id?: string };
+      patch: { full_name?: string; active?: boolean; bonus_eligible?: boolean; position_id?: string; store_id?: string };
     }) => {
       const { error } = await supabase.from("employees").update(v.patch).eq("id", v.id);
       if (error) throw new Error(error.message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["employees"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["employees"] });
+      setEditing(null);
+      setDeactivating(null);
+    },
     onError: (e: Error) => toast.error("Erro", { description: e.message }),
   });
 
@@ -402,7 +446,7 @@ function EmployeesTab({ editable }: { editable: boolean }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas as lojas</SelectItem>
-              {(stores.data ?? []).map((s) => (
+              {(visibleStores).map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.name}
                 </SelectItem>
@@ -432,12 +476,28 @@ function EmployeesTab({ editable }: { editable: boolean }) {
                 <TableHead className="text-right">Valor base</TableHead>
                 <TableHead className="w-[90px]">Ativo</TableHead>
                 <TableHead className="w-[110px]">Elegível</TableHead>
+                {editable && <TableHead className="w-[90px] text-right">Ações</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {(employees.data ?? []).map((e) => (
                 <TableRow key={e.id}>
-                  <TableCell className="font-medium">{e.full_name}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-1.5">
+                      <span>{e.full_name}</span>
+                      {editable && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          title="Editar nome"
+                          onClick={() => setEditing({ id: e.id, full_name: e.full_name })}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{(e.stores as { name: string } | null)?.name ?? "—"}</TableCell>
                   <TableCell>
                     <Select
@@ -476,12 +536,75 @@ function EmployeesTab({ editable }: { editable: boolean }) {
                       onCheckedChange={(v) => update.mutate({ id: e.id, patch: { bonus_eligible: v } })}
                     />
                   </TableCell>
+                  {editable && (
+                    <TableCell className="text-right">
+                      {e.active && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 text-destructive"
+                          title="Excluir (desativa preservando o histórico)"
+                          onClick={() => setDeactivating({ id: e.id, full_name: e.full_name })}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
       </CardContent>
+
+      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar nome do colaborador</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-ename">Nome completo</Label>
+              <Input
+                id="edit-ename"
+                value={editing?.full_name ?? ""}
+                onChange={(e) => setEditing((cur) => (cur ? { ...cur, full_name: e.target.value } : cur))}
+              />
+            </div>
+            <Button
+              className="w-full"
+              disabled={!editing?.full_name.trim() || update.isPending}
+              onClick={() =>
+                editing && update.mutate({ id: editing.id, patch: { full_name: editing.full_name.trim() } })
+              }
+            >
+              Salvar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deactivating} onOpenChange={(open) => !open && setDeactivating(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir colaborador</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deactivating?.full_name} será desativado e deixará de aparecer nas novas seleções. O histórico de
+              benefícios, metas e lançamentos anteriores será preservado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={update.isPending}
+              onClick={() => deactivating && update.mutate({ id: deactivating.id, patch: { active: false } })}
+            >
+              Confirmar exclusão
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={openNew} onOpenChange={setOpenNew}>
         <DialogContent>
@@ -504,7 +627,7 @@ function EmployeesTab({ editable }: { editable: boolean }) {
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(stores.data ?? []).map((s) => (
+                  {(visibleStores).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
                     </SelectItem>
@@ -554,7 +677,7 @@ function EmployeesTab({ editable }: { editable: boolean }) {
       <EmployeeImportDialog
         open={openImport}
         onOpenChange={setOpenImport}
-        stores={stores.data ?? []}
+        stores={visibleStores}
         positions={positions.data ?? []}
         existing={employees.data ?? []}
         onSaved={() => qc.invalidateQueries({ queryKey: ["employees"] })}

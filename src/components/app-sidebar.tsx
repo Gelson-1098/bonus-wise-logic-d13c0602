@@ -36,7 +36,7 @@ export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: access } = useAccess();
   const isMaster = access?.isMaster ?? false;
-  const universes = visibleUniverses(isMaster);
+  const universes = visibleUniverses(isMaster, access?.role === "gerente");
 
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
