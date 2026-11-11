@@ -1,5 +1,8 @@
 # Roadmap
 
+## Publicação solicitada
+- [ ] Publicar a cópia de lançamentos para WhatsApp após esclarecer a versão financeira e verificar alertas
+
 ## Cópia da relação de pagamento mensal
 - [x] Adicionar botão e mensagem usando somente dados carregados, sem alterar bonificações
 - [x] Validar classificação, totais e cópia na tela autenticada
