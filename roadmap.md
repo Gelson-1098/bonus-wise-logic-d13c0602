@@ -1,8 +1,8 @@
 # Roadmap
 
 ## Publicação solicitada
-- [ ] Corrigir e validar a composição histórica da cópia de pagamento sem alterar o motor
-- [ ] Publicar a cópia corrigida; os dois alertas anteriores de permissões permanecem informados
+- [x] Corrigir e validar a composição histórica da cópia de pagamento sem alterar o motor
+- [x] Solicitar publicação da cópia corrigida; os dois alertas anteriores de permissões permanecem informados
 
 ## Cópia da relação de pagamento mensal
 - [x] Adicionar botão e mensagem usando somente dados carregados, sem alterar bonificações
