@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { AlertTriangle, Calculator, CheckCircle2, MessageSquare, Plus, Search, Send, XCircle } from "lucide-react";
-import { buildPaymentWhatsApp } from "@/lib/payment-whatsapp";
+import { buildPaymentWhatsApp, copyPaymentText } from "@/lib/payment-whatsapp";
 import { supabase } from "@/integrations/supabase/client";
 import {
   addEmployeeToPeriod,
@@ -147,7 +147,7 @@ function LancamentoPage() {
       const { data, error } = await supabase
         .from("employee_period_entries")
         .select(
-          "id,calculated_value,approved_value,result_status,no_bonus,no_bonus_reason,notes,position_id,base_value,employees(full_name)",
+          "id,calculated_value,approved_value,result_status,no_bonus,no_bonus_reason,notes,position_id,base_value,calc_snapshot,employees(full_name)",
         )
         .eq("period_id", periodId!);
       if (error) throw new Error(error.message);
@@ -214,14 +214,20 @@ function LancamentoPage() {
     0,
   );
 
+  const paymentUnavailable = !entriesQuery.data?.length || !stores?.some((store) => store.id === storeId) ||
+    periodQuery.data?.month !== period.month || periodQuery.data?.year !== period.year ||
+    entriesQuery.isFetching || positionsQuery.isFetching || periodQuery.isFetching ||
+    entriesQuery.isError || positionsQuery.isError || periodQuery.isError || copyingPayment;
+
   async function copyPayment() {
-    if (!entriesQuery.data?.length || entriesQuery.isFetching || positionsQuery.isFetching) return;
+    if (paymentUnavailable || !entriesQuery.data) return;
     setCopyingPayment(true);
     try {
       const { message } = buildPaymentWhatsApp({
         storeName: stores?.find((s) => s.id === storeId)?.name ?? "Loja",
         month: period.month,
         year: period.year,
+        periodStatus: status,
         generatedAt: new Date(),
         entries: entriesQuery.data.map((e) => ({
           ...e,
@@ -229,7 +235,7 @@ function LancamentoPage() {
           position: (e.position_id && positionMap.get(e.position_id)?.name) || "—",
         })),
       });
-      await navigator.clipboard.writeText(message);
+      await copyPaymentText(message);
       toast.success("Relação de pagamento copiada!", { description: "Agora é só colar no WhatsApp." });
     } catch (error) {
       toast.error("Não foi possível copiar a relação de pagamento", {
