@@ -16,4 +16,4 @@
 - Benefits mutations use authorized server functions and preserve store-filtered legacy entries before writing per-store settings; shared JSON keys remain protected by Master-only RLS to prevent cross-store disclosure.
 - Benefit store comparisons use the shared official identity resolver, and edits must retain their existing entry and competence, to prevent alias mismatches and stale edits creating rows.
 - Employee updates are store-scoped at the database boundary (can_access_store): managers add, rename and deactivate employees only in their authorized stores; hard DELETE stays Master-only to preserve history.
-- Monthly payment-copy formatting stays in a pure browser-safe helper and consumes loaded entries only; it must never modify the bonus engine, persisted values or existing screen totals.
+- Monthly payment-copy composition uses loaded historical calculation snapshots and period approval in a pure browser-safe helper; ambiguous compositions remain pending to avoid changing official payouts, the bonus engine or screen totals.
