@@ -1,7 +1,8 @@
 # Roadmap
 
 ## Publicação solicitada
-- [ ] Publicar a cópia de lançamentos para WhatsApp após esclarecer a versão financeira e verificar alertas
+- [ ] Corrigir e validar a composição histórica da cópia de pagamento sem alterar o motor
+- [ ] Publicar a cópia corrigida; os dois alertas anteriores de permissões permanecem informados
 
 ## Cópia da relação de pagamento mensal
 - [x] Adicionar botão e mensagem usando somente dados carregados, sem alterar bonificações

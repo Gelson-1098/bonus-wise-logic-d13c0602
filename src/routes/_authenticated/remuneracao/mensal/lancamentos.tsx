@@ -345,7 +345,7 @@ function LancamentoPage() {
                   size="sm"
                   className="h-auto min-h-8 whitespace-normal text-left font-medium"
                   onClick={copyPayment}
-                  disabled={!entriesQuery.data?.length || entriesQuery.isFetching || positionsQuery.isFetching || copyingPayment}
+                  disabled={paymentUnavailable}
                 >
                   <MessageSquare className="size-4 shrink-0" /> WHATSAPP — COPIAR PAGAMENTO
                 </Button>
