@@ -35,7 +35,7 @@ test("operators and trainees cannot use incorrect amounts", () => {
 });
 test("failed or ambiguous eliminatory never releases presentism", () => {
   for (const status of ["nao_atingiu", "nao_aplicavel"]) {
-    const e = entry(); output(e).output.lines[2].status = status;
+    const e = entry(); const line = output(e).output.lines[2]; assert.ok(line); line.status = status;
     assert.equal(paymentAmounts(e, context), null);
   }
 });
@@ -73,7 +73,7 @@ test("wrong competence is pending", () => {
 test("capped or irreconcilable composition is not silently changed", () => {
   const e = entry(); output(e).output.cappedAt = 380;
   assert.equal(paymentAmounts(e, context), null);
-  const broken = entry(); output(broken).output.lines[1].awarded = 170;
+  const broken = entry(); const line = output(broken).output.lines[1]; assert.ok(line); line.awarded = 170;
   assert.equal(paymentAmounts(broken, context), null);
 });
 test("invalid amounts remain pending without NaN", () => {

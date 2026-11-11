@@ -28,30 +28,30 @@ export function paymentAmounts(entry: PaymentEntry, context: PaymentContext) {
   }
   if (entry.result_status !== "aprovado") return null;
   const snapshot = record(entry.calc_snapshot);
-  const period = record(snapshot?.period);
-  const output = record(snapshot?.output);
-  if (period?.month !== context.month || period?.year !== context.year || output?.status !== "aprovado" || output.filled !== true || !Array.isArray(output.lines)) return null;
-  const lines = output.lines.map(record);
-  if (lines.some((line) => !line || (line.is_eliminatory === true && line.status !== "atingiu"))) return null;
+  const period = record(snapshot?.["period"]);
+  const output = record(snapshot?.["output"]);
+  if (period?.["month"] !== context.month || period?.["year"] !== context.year || output?.["status"] !== "aprovado" || output["filled"] !== true || !Array.isArray(output["lines"])) return null;
+  const lines = output["lines"].map(record);
+  if (lines.some((line) => !line || (line["is_eliminatory"] === true && line["status"] !== "atingiu"))) return null;
   const total = cents(entry.approved_value ?? entry.calculated_value);
   const calculated = cents(entry.calculated_value);
-  if (total === null || calculated === null || cents(output.total) !== calculated) return null;
+  if (total === null || calculated === null || cents(output["total"]) !== calculated) return null;
   // An explicit zero approval must never be turned into a presentism payment.
   if (total === 0) return { presentism: 0, goal: 0, total: 0 };
-  if (total !== calculated || output.cappedAt != null) return null;
-  const awarded = lines.map((line) => cents(line?.awarded));
+  if (total !== calculated || output["cappedAt"] != null) return null;
+  const awarded = lines.map((line) => cents(line?.["awarded"]));
   if (awarded.some((value) => value === null) || awarded.reduce<number>((sum, value) => sum + (value ?? 0), 0) !== total) return null;
-  const presentLines = lines.filter((line) => normalized(line?.name) === "presenteismo");
+  const presentLines = lines.filter((line) => normalized(line?.["name"]) === "presenteismo");
   if (presentLines.length > 1) return null;
   const presentLine = presentLines[0];
   const position = normalized(entry.position);
   const managers = new Set(["gerente", "gerente jr", "gerente pj", "gerente pleno ii", "gerente pleno iii", "gerente senior"]);
   if (managers.has(position) && presentLine) return null;
-  const configured = cents(presentLine?.value_brl);
+  const configured = cents(presentLine?.["value_brl"]);
   if (position === "operador" && configured !== 20000) return null;
   if (position === "gerente trainee" && configured !== 25000) return null;
   if (!presentLine && !managers.has(position)) return null;
-  const presentism = presentLine?.status === "atingiu" ? cents(presentLine.awarded) : 0;
+  const presentism = presentLine?.["status"] === "atingiu" ? cents(presentLine["awarded"]) : 0;
   if (presentism === null || (presentism > 0 && presentism !== configured) || presentism > total) return null;
   return { presentism: presentism / 100, goal: (total - presentism) / 100, total: total / 100 };
 }
